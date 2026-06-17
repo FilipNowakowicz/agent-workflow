@@ -1,0 +1,74 @@
+# Advisory model-routing metadata for this provider repo. Not consumed by
+# dispatch yet (see scripts/agent-route --help for current scope).
+#
+# Path classes describe agent-workflow's own provider layout (skills/,
+# scripts/, orchestration/, schemas/, learning/, repo-map/, docs/, and
+# public-release metadata), not the installed .agents/ tree a consumer repo
+# renders this into. A consumer repo that installs this control plane should
+# adapt these patterns to its own .agents/-prefixed paths.
+schema: agent-model-routing/v1
+version: 1
+
+path_classes:
+  - id: docs
+    description: "Top-level docs and operator documentation."
+    patterns: ["^README\\.md$", "^PLAN\\.md$", "^docs/"]
+    risk: low
+    default_profile: doc-editor
+    required_checks: ["git diff --check"]
+  # Must precede agent-workflow-scripts: its broad ^learning/ pattern would
+  # otherwise classify run-produced candidate files as workflow-script
+  # changes and drag every outcome's route into that class.
+  - id: learning-candidates
+    description: "Captured learning candidates — run byproducts, not workflow code."
+    patterns: ["^learning/candidates/"]
+    risk: low
+    default_profile: agent-workflow-engineer
+    required_checks: ["bash learning/scripts/validate-candidates.sh learning"]
+  - id: agent-workflow-scripts
+    description: "Control-plane scripts, orchestration entrypoints, skills, schemas, repo-map, and learning tooling."
+    patterns:
+      [
+        "^scripts/agent-",
+        "^orchestration/agent-.*\\.sh$",
+        "^skills/",
+        "^learning/",
+        "^repo-map/",
+        "^schemas/",
+      ]
+    risk: medium
+    default_profile: agent-workflow-engineer
+    required_checks: ["git diff --check", "targeted shellcheck"]
+  - id: nix-modules
+    description: "Flake and Nix packaging surface."
+    patterns: ["^flake\\.nix$", "^flake\\.lock$", "^flake/"]
+    risk: medium
+    default_profile: nix-engineer
+    required_checks: ["nix flake check"]
+  - id: security-secrets
+    description: "Secrets policy, encrypted material, and keys (generic patterns; this repo carries no secrets of its own)."
+    patterns: ["^(.*/)?\\.sops\\.yaml$", "^(.*/)?secrets/", "^(.*/)?.*\\.age$", "^(.*/)?.*\\.enc\\.yaml$"]
+    risk: high
+    default_profile: security-review
+    required_checks: ["human review"]
+  - id: ci-workflows
+    description: "GitHub Actions and CI helpers."
+    patterns: ["^\\.github/workflows/", "^\\.github/actions/"]
+    risk: high
+    default_profile: ci-workflow-engineer
+    required_checks: ["human review"]
+  # Root agent instruction/harness config files control agent behavior;
+  # explicit human-review class instead of falling through to
+  # "unclassified" noise.
+  - id: agent-instructions
+    description: "Root agent instruction and harness config files (CLAUDE.md, .claude/, .codex/)."
+    patterns: ["^CLAUDE\\.md$", "^\\.claude/", "^\\.codex/"]
+    risk: high
+    default_profile: agent-workflow-engineer
+    required_checks: ["human review"]
+  - id: public-release-metadata
+    description: "Public legal/security-policy commitments (LICENSE, SECURITY.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md)."
+    patterns: ["^LICENSE$", "^SECURITY\\.md$", "^CONTRIBUTING\\.md$", "^CODE_OF_CONDUCT\\.md$"]
+    risk: medium
+    default_profile: ""
+    required_checks: ["human review"]
