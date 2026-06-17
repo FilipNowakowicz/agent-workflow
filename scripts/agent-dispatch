@@ -194,7 +194,9 @@ run_dispatch() {
       echo "agent-dispatch: issue #$issue failed readiness check; skipping (${readiness_output})" >&2
       post_readiness_bounce_comment "$issue" "$readiness_output"
       record_skip "$issue"
-      dispatched=$((dispatched + 1))
+      # A readiness skip is NOT a dispatch: do not charge it against the
+      # --max-issues budget, or a single unready issue ahead in gh's order
+      # would consume the budget and starve a ready issue later in the queue.
       continue
     fi
 
@@ -254,6 +256,19 @@ esac
 EOF
   chmod +x "$bin/readiness"
 
+  # Fake readiness for the starvation case: the FIRST eligible issue (901) is
+  # NOT ready, a later one (904) is ready.
+  cat >"$bin/readiness-starve" <<'EOF'
+#!/usr/bin/env bash
+[[ ${1:-} == --issue ]] || { echo "unexpected args: $*" >&2; exit 2; }
+case "$2" in
+901) echo "agent-issue-readiness: NOT READY - missing sections" >&2; exit 1 ;;
+904) echo "agent-issue-readiness: ready (all required sections present)"; exit 0 ;;
+*) echo "unexpected issue: $2" >&2; exit 2 ;;
+esac
+EOF
+  chmod +x "$bin/readiness-starve"
+
   # Fake runner: records its invocation.
   cat >"$bin/runner" <<'EOF'
 #!/usr/bin/env bash
@@ -278,6 +293,10 @@ EOF
   export PATH="$bin:$PATH"
   export AGENT_DISPATCH_READINESS="$bin/readiness"
   export AGENT_DISPATCH_RUNNER="$bin/runner"
+  # Point the outcome recorder at the real sibling script so the self-test is
+  # self-contained (the default .agents/scripts/... path does not exist in a
+  # bare checkout of this repo).
+  export AGENT_DISPATCH_RECORD_OUTCOME="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/agent-record-outcome"
   export AGENT_REPO_DIR="$repo"
   export AGENT_OUTCOME_DIR="$tmp/out"
   export BASE_BRANCH=main
@@ -339,6 +358,19 @@ EOF
   [[ -n $record ]] || die "self-test: expected a blocked outcome record for issue #904"
   jq -e --arg blocker "$SKIP_BLOCKER" '.issue == 904 and .status == "blocked" and .blocker == $blocker' "$record" >/dev/null ||
     die "self-test: blocked outcome record for issue #904 missing expected fields"
+
+  # A readiness skip must not consume the --max-issues budget: with the first
+  # eligible issue (901) unready and --max-issues 1, the ready issue later in
+  # the queue (904) must still be dispatched rather than starved.
+  : >"$RUNNER_LOG"
+  out=$(AGENT_DISPATCH_READINESS="$bin/readiness-starve" "$script_path" --skip-liveness --max-issues 1 2>&1)
+  [[ $out == *"issue #901 failed readiness check; skipping"* ]] ||
+    die "self-test: expected unready issue #901 to be skipped (got: $out)"
+  [[ $out == *"dispatching issue #904"* ]] ||
+    die "self-test: expected ready issue #904 to be dispatched despite the earlier skip (got: $out)"
+  out=$(<"$RUNNER_LOG")
+  [[ $out == "--require-ready 904" ]] ||
+    die "self-test: expected runner invocation '--require-ready 904', a skip must not consume the budget (got: $out)"
 
   printf 'agent-dispatch self-test passed\n'
 }
