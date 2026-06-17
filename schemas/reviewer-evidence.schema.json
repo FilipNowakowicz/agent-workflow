@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/FilipNowakowicz/nixos-config/.agents/schemas/reviewer-evidence.schema.json",
+  "$id": "https://github.com/FilipNowakowicz/agent-workflow/schemas/reviewer-evidence.schema.json",
   "title": "Agent reviewer evidence",
   "type": "object",
   "required": [

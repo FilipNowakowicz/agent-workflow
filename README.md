@@ -9,6 +9,12 @@ The full vision and roadmap live in [`PLAN.md`](PLAN.md); the endgame analysis
 and the provider/consumer extraction reasoning live in
 [`docs/endgame-analysis.md`](docs/endgame-analysis.md).
 
+Public-use basics are tracked in [`LICENSE`](LICENSE), [`SECURITY.md`](SECURITY.md),
+[`CONTRIBUTING.md`](CONTRIBUTING.md), and
+[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md). The repository is still a v2
+development space; those files define the intended public contract, not a claim
+that the loop is turnkey for arbitrary repositories yet.
+
 ## Status: v2 development space (seeded snapshot)
 
 This repo was seeded from the working agent loop in the personal `nixos-config`
