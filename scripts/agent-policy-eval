@@ -229,15 +229,19 @@ self_test() {
     "home/users/user/secrets/db.json"
     ".sops.yaml"
     ".github/workflows/nix.yml"
-    ".agents/governance.yaml"
-    ".agents/scripts/agent-policy-eval"
-    ".agents/scripts/agent-record-outcome"
-    ".agents/scripts/agent-merge-gate"
+    "governance.yaml"
+    "model-routing.yaml"
+    "capability-profiles.yaml"
+    "scripts/agent-policy-eval"
+    "scripts/agent-record-outcome"
+    "scripts/agent-merge-gate"
     ".claude/hooks/guard-edits.sh"
     ".codex/hooks.json"
-    "scripts/agent-run-issue.sh"
-    "scripts/agent-review-pr.sh"
+    "orchestration/agent-run-issue.sh"
+    "orchestration/agent-review-pr.sh"
     "hosts/main/secrets/host.age"
+    "LICENSE"
+    "SECURITY.md"
   )
   out=$(printf '%s\n' "${protected[@]}" | "$script_path" --files-from - 2>&1) && rc=0 || rc=$?
   [[ $rc -eq 1 ]] || die "self-test: expected protected paths to exit 1 (got $rc; output: $out)"
@@ -251,10 +255,10 @@ self_test() {
 
   # Ordinary docs and non-policy agent docs pass with low risk and exit 0.
   local ordinary=(
-    "docs/architecture.md"
+    "docs/endgame-analysis.md"
     "README.md"
-    ".agents/README.md"
-    ".agents/learning/candidates/example.yml"
+    "skills/issue-tdd/SKILL.md"
+    "learning/candidates/example.yml"
   )
   out=$(printf '%s\n' "${ordinary[@]}" | "$script_path" --files-from - 2>&1) && rc=0 || rc=$?
   [[ $rc -eq 0 ]] || die "self-test: expected ordinary paths to exit 0 (got $rc; output: $out)"
@@ -290,7 +294,7 @@ EOF
 
   # --git-diff finds both a modified tracked file and a new untracked file.
   local repo="$tmp/repo"
-  mkdir -p "$repo/.agents"
+  mkdir -p "$repo"
   git -C "$repo" init -q
   git -C "$repo" config user.email test@example.invalid
   git -C "$repo" config user.name 'Agent Policy Test'

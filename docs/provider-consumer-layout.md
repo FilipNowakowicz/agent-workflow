@@ -57,3 +57,20 @@ Until the installer contract is finalized, examples follow this rule:
 
 The flake currently exposes source paths only. It does not yet install files
 into a consumer repo by itself.
+
+## Provider-local Policy Metadata
+
+`governance.yaml`, `model-routing.yaml`, and `capability-profiles.yaml` live
+at this repo's root and describe **this provider repo's own** path classes
+(`scripts/`, `orchestration/`, `skills/`, `learning/`, `repo-map/`,
+`schemas/`, `docs/`, and public-release files like `LICENSE`). They are
+consumed by `scripts/agent-route`, `scripts/agent-policy-eval`, and
+`scripts/agent-routing-check` when run from this checkout, and validated by
+those scripts' `--self-test` modes.
+
+A consumer repo that installs this control plane under `.agents/` should
+copy and adapt these three files to its own `.agents/governance.yaml`,
+`.agents/model-routing.yaml`, and `.agents/capability-profiles.yaml`,
+rewriting the path-class patterns for its own repo layout (e.g. NixOS
+host/module trees) rather than reusing these provider-shaped patterns
+verbatim.

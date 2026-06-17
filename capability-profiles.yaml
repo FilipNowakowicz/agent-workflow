@@ -1,0 +1,42 @@
+# Advisory capability profiles for this provider repo. Not consumed by
+# dispatch yet (see scripts/agent-route --help for current scope).
+schema: agent-capability-profiles/v1
+version: 1
+
+profiles:
+  - id: doc-editor
+    agent: gemini-cli
+    allowed_path_classes: ["docs"]
+    max_risk: low
+    required_checks: ["git diff --check"]
+    escalation: "Escalate if docs imply behavior, security, or release-process changes."
+  - id: agent-workflow-engineer
+    agent: codex-cli
+    allowed_path_classes:
+      [
+        "docs",
+        "learning-candidates",
+        "agent-workflow-scripts",
+        "agent-instructions",
+      ]
+    max_risk: high
+    required_checks: ["git diff --check", "targeted shellcheck"]
+    escalation: "Escalate before granting merge authority, changing hooks, or weakening policy."
+  - id: nix-engineer
+    agent: claude-code
+    allowed_path_classes: ["nix-modules"]
+    max_risk: medium
+    required_checks: ["nix flake check"]
+    escalation: "Escalate before adding flake inputs that fetch untrusted code or change exported paths' public contract."
+  - id: security-review
+    agent: claude-code
+    allowed_path_classes: ["security-secrets"]
+    max_risk: high
+    required_checks: ["human review"]
+    escalation: "Always require human review before merge or live action."
+  - id: ci-workflow-engineer
+    agent: codex-cli
+    allowed_path_classes: ["ci-workflows", "agent-workflow-scripts"]
+    max_risk: high
+    required_checks: ["human review"]
+    escalation: "Escalate before changing required checks, runners, tokens, or merge gates."

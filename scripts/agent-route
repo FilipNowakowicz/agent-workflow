@@ -470,10 +470,10 @@ YAML
   rm -rf "$route_tmp"
 
   # docs: low risk, auto route, doc-editor profile. With no outcome records
-  # (default --outcome-dir resolves to .agents/state/outcomes, which is
-  # gitignored and typically absent in a fresh checkout), path_class_stats is
-  # an empty object.
-  out=$(printf 'docs/architecture.md\n' | "$script_path" --json)
+  # (default --outcome-dir resolves to state/outcomes, which is gitignored
+  # and typically absent in a fresh checkout), path_class_stats is an empty
+  # object.
+  out=$(printf 'docs/endgame-analysis.md\n' | "$script_path" --json)
   printf '%s' "$out" | jq -e '
     .risk == "low"
     and .route == "auto"
@@ -484,8 +484,8 @@ YAML
   ' >/dev/null || die "self-test: unexpected docs decision: $out"
 
   # learning candidates: run byproducts, low risk, must NOT classify as
-  # agent-workflow-scripts despite living under .agents/.
-  out=$(printf '.agents/learning/candidates/2026-01-01-example.yml\n' | "$script_path" --json)
+  # agent-workflow-scripts despite living under learning/.
+  out=$(printf 'learning/candidates/2026-01-01-example.yml\n' | "$script_path" --json)
   printf '%s' "$out" | jq -e '
     .risk == "low"
     and .route == "auto"
@@ -493,7 +493,7 @@ YAML
   ' >/dev/null || die "self-test: unexpected learning-candidates decision: $out"
 
   # root CLAUDE.md: explicit agent-instructions class, human review — not
-  # "unclassified" noise. Host runbooks under hosts/ stay docs.
+  # "unclassified" noise.
   out=$(printf 'CLAUDE.md\n' | "$script_path" --json)
   printf '%s' "$out" | jq -e '
     .risk == "high"
@@ -501,9 +501,6 @@ YAML
     and .path_classes == ["agent-instructions"]
     and .default_profile == null
   ' >/dev/null || die "self-test: unexpected agent-instructions decision: $out"
-  out=$(printf 'hosts/main/CLAUDE.md\n' | "$script_path" --json)
-  printf '%s' "$out" | jq -e '.path_classes == ["docs"]' >/dev/null ||
-    die "self-test: expected host runbook to stay in docs: $out"
 
   # flake.lock: dependency pin, nix-modules, not unclassified.
   out=$(printf 'flake.lock\n' | "$script_path" --json)
@@ -513,13 +510,28 @@ YAML
   ' >/dev/null || die "self-test: unexpected flake.lock decision: $out"
 
   # agent workflow scripts: medium risk, auto route, agent-workflow-engineer.
-  out=$(printf '.agents/scripts/agent-route\n' | "$script_path" --json)
+  out=$(printf 'scripts/agent-route\n' | "$script_path" --json)
   printf '%s' "$out" | jq -e '
     .risk == "medium"
     and .route == "auto"
     and .default_profile == "agent-workflow-engineer"
     and .path_classes == ["agent-workflow-scripts"]
   ' >/dev/null || die "self-test: unexpected agent-workflow decision: $out"
+  out=$(printf 'orchestration/agent-session.sh\n' | "$script_path" --json)
+  printf '%s' "$out" | jq -e '.path_classes == ["agent-workflow-scripts"]' >/dev/null ||
+    die "self-test: expected orchestration entrypoint to be agent-workflow-scripts: $out"
+  out=$(printf 'skills/issue-tdd/SKILL.md\n' | "$script_path" --json)
+  printf '%s' "$out" | jq -e '.path_classes == ["agent-workflow-scripts"]' >/dev/null ||
+    die "self-test: expected skill doc to be agent-workflow-scripts, not docs: $out"
+
+  # public-release metadata: forced human review, no auto profile.
+  out=$(printf 'LICENSE\n' | "$script_path" --json)
+  printf '%s' "$out" | jq -e '
+    .risk == "medium"
+    and .route == "human-review"
+    and .default_profile == null
+    and .path_classes == ["public-release-metadata"]
+  ' >/dev/null || die "self-test: unexpected public-release-metadata decision: $out"
 
   # nix modules: medium risk, auto route, nix-engineer.
   out=$(printf 'flake.nix\n' | "$script_path" --json)
