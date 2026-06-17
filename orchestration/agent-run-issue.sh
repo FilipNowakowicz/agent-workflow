@@ -127,6 +127,16 @@ while [[ $# -gt 0 ]]; do
     exit 2
     ;;
   *)
+    # Positional issue numbers are interpolated into jq PR-linking regexes
+    # (linked_pr_count / discover_pr_lines); a token with regex metacharacters
+    # makes those filters fail to compile and silently report zero linked PRs,
+    # misfiring the stranded-branch / post-PR-timeout recovery. Validate as a
+    # bare integer at intake (die is not defined this early, mirror the
+    # unknown-flag handler's echo + exit 2).
+    if [[ ! $1 =~ ^[0-9]+$ ]]; then
+      echo "agent-run-issue: invalid issue argument: '$1' (expected a positive integer)" >&2
+      exit 2
+    fi
     issues+=("$1")
     shift
     ;;
@@ -242,6 +252,13 @@ terminate_inner_session() {
   kill -TERM -- "$kill_target" 2>/dev/null || true
   while kill -0 "$pid" 2>/dev/null; do
     if [[ $(ps -o stat= -p "$pid" 2>/dev/null || true) == Z* ]]; then
+      # The leader is a zombie (already exited, awaiting reap) but, under
+      # setsid, group children (a nix build / subagent) may still be running.
+      # Reaping the leader alone would orphan them and defeat the group-kill,
+      # potentially holding the box busy past idle-shutdown. Issue the group
+      # SIGKILL before breaking out; on the no-setsid path kill_target is the
+      # zombie leader itself, so this is a harmless no-op there.
+      kill -KILL -- "$kill_target" 2>/dev/null || true
       break
     fi
     if ((waited >= grace)); then
@@ -708,6 +725,11 @@ self_test() {
   repo="$tmp/repo"
   bin="$tmp/bin"
 
+  # Absolute path to this script, resolved before any `cd`, so self-test cases
+  # can re-invoke it from inside the throwaway repo.
+  local self_path
+  self_path="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
+
   mkdir -p "$repo" "$bin"
   git -C "$repo" init -q
   git -C "$repo" config user.email test@example.invalid
@@ -1050,6 +1072,20 @@ EOF
     die "self-test: dispatch prompt missing the subagent-isolation instruction"
   [[ $base_prompt == *"out of this session's transcript entirely"* ]] ||
     die "self-test: dispatch prompt missing the subagent-isolation rationale"
+
+  # --- positional issue argument validation (#11) ---
+  set +e
+  out=$(AGENT_CLAUDE_CMD=true "$self_path" '1.2' 2>&1)
+  rc=$?
+  set -e
+  [[ $rc -eq 2 ]] || die "self-test: expected a non-integer issue arg to exit 2 (got $rc; output: $out)"
+  [[ $out == *"invalid issue argument: '1.2'"* ]] ||
+    die "self-test: expected an invalid-issue-argument error for a non-integer arg (got: $out)"
+  set +e
+  out=$(AGENT_CLAUDE_CMD=true "$self_path" '123(' 2>&1)
+  rc=$?
+  set -e
+  [[ $rc -eq 2 ]] || die "self-test: expected an issue arg with regex metacharacters to exit 2 (got $rc; output: $out)"
 
   AGENT_INNER_TIMEOUT_SECONDS=10
   AGENT_HEARTBEAT_SECONDS=1
