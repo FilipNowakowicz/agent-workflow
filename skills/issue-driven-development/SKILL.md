@@ -35,8 +35,8 @@ If the source item is still vague, use `issue-tdd` first.
    - Do not ask permission to inspect, validate, or proceed through routine
      workflow steps.
 4. Create or identify the failing check before editing when feasible:
-   - Nix invariant, fixture, package check, profile test, smoke test, doc-link check,
-     or a narrow command from `scripts/validate.sh`.
+   - An invariant, fixture, unit/integration test, smoke test, doc-link check,
+     or a narrow command from the repo's verification command.
 5. Create a targeted branch/worktree when useful for isolation.
    - Prefer `codex/<short-scope>` or the established branch prefix.
    - Keep one issue to one PR unless the scope clearly splits.
@@ -88,8 +88,8 @@ If the source item is still vague, use `issue-tdd` first.
 ## Repo-Specific Notes
 
 - Preserve user-owned planning/status docs unless explicitly asked to rewrite them.
-- For this git-backed flake, stage newly created files before Nix eval/build checks
-  that need to see them.
+- If the repo's checks read the committed/staged git tree (e.g. Nix flakes),
+  stage newly created files before running them so the checks can see them.
 - Do not include `Co-Authored-By` trailers.
 - Before launching an `isolation: "worktree"` subagent for issue/subagent work,
   commit or stash any intentional edits in the primary checkout first.
@@ -120,4 +120,4 @@ If the source item is still vague, use `issue-tdd` first.
   durable-doc home for anything worth keeping (architecture/operations docs)
   before deleting it; keep only forward-looking items; `rg` for cross-references
   to removed sections from other goals/roadmap docs and update or drop them;
-  then run `bash scripts/validate.sh docs`.
+  then run the repo's doc/link verification.

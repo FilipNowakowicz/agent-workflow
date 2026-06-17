@@ -50,7 +50,7 @@ layout, so a consumer that adopts the convention needs no config file.
 | `agent-liveness-gate` (follow-up) | genericized a stray `hosts/gcp-agent/CLAUDE.md` reference in a `gh auth` error |
 
 **Executable nixos-coupling sweep across `scripts/` + `orchestration/` is clean.** All 18 scripts pass `--self-test` standalone. Remaining nixos strings are confined to self-test *fixture data* (example `path_classes`/commands inside test JSON), which is illustrative, not functional coupling.
-| portable `skills/*` | pending — genericize prose references (`nix-verification-loop`, `lib/invariants.nix`) |
+| portable `skills/*` | **done** — genericized prose: `nix-verification-loop`→"the repo's verification-loop skill / verification command", `scripts/validate.sh`→"the repo's verification command", `lib/invariants.nix`→"the repo's invariants/checks", "git-backed flake" note made conditional. `merge-gate` and `CLAUDE.md` kept (generic engine/Claude concepts) |
 
 Each migration sources the lib, replaces hardcoded paths with the `AGENT_*`
 vars, and keeps the script's embedded self-test green. Grouped into small PRs by

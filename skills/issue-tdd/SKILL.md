@@ -33,8 +33,8 @@ Turn a vague goal into a testable issue:
    - Do not start implementation.
 3. Draft the issue in implementation-ready form.
    - Use `issue-driven-development` for acceptance criteria and proving checks.
-   - Use `nix-verification-loop` to choose validation when the touched surface is
-     Nix, shell, docs, host, package, deploy, or profile-test related.
+   - Use the repo's verification-loop skill (or its verification command) to
+     choose the smallest meaningful validation for the touched surface.
 4. Ask only real decisions before implementation.
    - Ask about security posture, ownership, deploy risk, product behavior,
      document ownership, or PR split boundaries.
