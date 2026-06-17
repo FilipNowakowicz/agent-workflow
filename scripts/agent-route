@@ -145,6 +145,23 @@ parse_routing() {
   done <"$file"
 
   [[ $idx -ge 0 ]] || die "$file: no path_classes entries found"
+
+  # classify_path matches each pattern with an UNANCHORED bash regex test, so
+  # it relies on every pattern being self-anchored to the path start. An
+  # un-anchored pattern (e.g. "secrets/" or "\.sops\.yaml") would match
+  # mid-path — classifying docs/notes-about-secrets/ as a secrets class, or a
+  # broad early class shadowing a more specific later one. Rather than trust
+  # that invariant silently, fail loudly at parse time if any pattern is not
+  # anchored with a leading '^'. (#12)
+  local vi vpattern
+  for ((vi = 0; vi < ${#rt_id[@]}; vi++)); do
+    [[ -n ${rt_patterns[vi]:-} ]] || continue
+    while IFS= read -r vpattern; do
+      [[ -n $vpattern ]] || continue
+      [[ $vpattern == \^* ]] ||
+        die "$file: path-class '${rt_id[vi]}' pattern is not anchored to the path start (must begin with '^'): $vpattern"
+    done < <(parse_inline_array "${rt_patterns[vi]}")
+  done
 }
 
 # Populate parallel arrays describing .agents/capability-profiles.yaml's
@@ -399,6 +416,58 @@ self_test() {
   local script_path
   script_path="$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
   local out
+
+  # --- routing patterns must be anchored to the path start (#12) -----------
+  # Uses synthetic --routing/--profiles fixtures so it does not depend on the
+  # real metadata files. An un-anchored pattern is rejected at parse time, and
+  # a correctly anchored secrets pattern is path-scoped (does not match
+  # "docs/notes-about-secrets/").
+  local route_tmp
+  route_tmp=$(mktemp -d)
+  cat >"$route_tmp/profiles.yaml" <<'YAML'
+profiles:
+  - id: doc-editor
+    agent: gemini-cli
+    max_risk: low
+    escalation: ""
+    required_checks: []
+YAML
+  cat >"$route_tmp/unanchored.yaml" <<'YAML'
+path_classes:
+  - id: secrets
+    risk: high
+    default_profile: ""
+    patterns: ["secrets/"]
+    required_checks: ["human review"]
+YAML
+  if printf 'x\n' | "$script_path" --routing "$route_tmp/unanchored.yaml" \
+    --profiles "$route_tmp/profiles.yaml" --json >/dev/null 2>&1; then
+    die "self-test: expected an un-anchored routing pattern to be rejected at parse time"
+  fi
+  cat >"$route_tmp/anchored.yaml" <<'YAML'
+path_classes:
+  - id: secrets
+    risk: high
+    default_profile: ""
+    patterns: ["^(.*/)?\\.sops\\.yaml$", "^(.*/)?secrets/"]
+    required_checks: ["human review"]
+  - id: docs
+    risk: low
+    default_profile: ""
+    patterns: ["^docs/", "^.*\\.md$"]
+    required_checks: []
+YAML
+  out=$(printf 'docs/notes-about-secrets/readme.md\n' |
+    "$script_path" --routing "$route_tmp/anchored.yaml" --profiles "$route_tmp/profiles.yaml" --json) ||
+    die "self-test: anchored routing metadata should classify cleanly"
+  printf '%s' "$out" | jq -e '.path_classes == ["docs"] and .route == "auto"' >/dev/null ||
+    die "self-test: an anchored secrets pattern must not match mid-path (got: $out)"
+  out=$(printf 'hosts/x/.sops.yaml\n' |
+    "$script_path" --routing "$route_tmp/anchored.yaml" --profiles "$route_tmp/profiles.yaml" --json) ||
+    die "self-test: anchored routing metadata should classify a real secret"
+  printf '%s' "$out" | jq -e '.path_classes == ["secrets"] and .route == "human-review"' >/dev/null ||
+    die "self-test: an anchored secrets pattern must still match a secret anywhere in the tree (got: $out)"
+  rm -rf "$route_tmp"
 
   # docs: low risk, auto route, doc-editor profile. With no outcome records
   # (default --outcome-dir resolves to .agents/state/outcomes, which is
