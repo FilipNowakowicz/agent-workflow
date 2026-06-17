@@ -144,6 +144,11 @@ preflight_issue_auth() {
     exit 1
   fi
 
+  # Keep this blocklist in lockstep with the on-host copy in
+  # scripts/agent-run-issue.sh (claude_preflight_output_ok). `session limit`
+  # was added there for #259 — a remote probe that exits 0 but prints
+  # "You've hit your session limit" must fail the gate, or a billed session
+  # starts and dies mid-run having opened no PR.
   local remote_probe
   remote_probe=$(
     cat <<'EOF'
@@ -152,7 +157,7 @@ rc=0
 claude -p "say ok" --model sonnet --dangerously-skip-permissions >"$out" 2>&1 || rc=$?
 if [ "$rc" -eq 0 ] &&
   grep -Eiq '(^|[^[:alpha:]])ok([^[:alpha:]]|$)' "$out" &&
-  ! grep -Eiq '401|Invalid authentication credentials|Failed to authenticate|OAuth|quota|rate limit' "$out"; then
+  ! grep -Eiq '401|Invalid authentication credentials|Failed to authenticate|OAuth|quota|rate limit|session limit' "$out"; then
   rm -f "$out"
   exit 0
 fi
