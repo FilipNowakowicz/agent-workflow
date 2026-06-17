@@ -2,6 +2,10 @@
 # Summarize agent issue-run outcome records into a compact index.
 set -euo pipefail
 
+# Centralized engine layout + consumer-config seam (AGENT_* path defaults).
+# shellcheck source-path=SCRIPTDIR source=lib/agent-env.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/agent-env.sh"
+
 usage() {
   cat <<'EOF'
 Usage: agent-outcome-index [options]
@@ -189,7 +193,7 @@ self_test() {
   printf 'agent-outcome-index self-test passed\n'
 }
 
-dir="${AGENT_OUTCOME_DIR:-.agents/state/outcomes}"
+dir="$AGENT_OUTCOME_DIR"
 out_json=0
 permissive=0
 

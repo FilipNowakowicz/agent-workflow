@@ -38,14 +38,23 @@ layout, so a consumer that adopts the convention needs no config file.
 | Script | Status |
 | --- | --- |
 | `agent-record-outcome` | **migrated** — reference implementation; self-test green |
-| `agent-dispatch` | pending (already collects many `AGENT_*` vars; source the lib) |
-| `agent-policy-eval` | pending (`.agents/governance.yaml`, protected-path lists) |
-| `agent-route`, `agent-issue-readiness`, `agent-liveness-gate`, `agent-merge-gate`, `agent-review-*`, `agent-outcome-*`, `agent-weekly-digest` | pending |
+| `agent-outcome-index`, `agent-outcome-stats`, `agent-outcome-dashboard`, `agent-weekly-digest` | **migrated** — `AGENT_OUTCOME_DIR` / `AGENT_CANDIDATES_DIR`; self-tests green |
+| `agent-dispatch` | pending — also changes repo-dir default (`.` → git toplevel) and sibling-script defaults (`AGENT_ENGINE_DIR`); needs its own review |
+| `agent-policy-eval`, `agent-route`, `agent-review-stage`, `agent-merge-gate` | **blocked** — depend on consumer policy files (`governance.yaml`, `model-routing.yaml`, `capability-profiles.yaml`) that were never seeded; their self-tests fail standalone today. Seed those (as engine defaults or example consumer config) in the same PR |
+| `agent-issue-readiness`, `agent-liveness-gate`, `agent-dispatchable-issues`, `agent-routing-check`, `agent-review-evidence-check` | pending |
 | `orchestration/*` (`agent-run-issue`, `agent-session`, `agent-review-pr`) | pending — heaviest `validate.sh` / `.agents/` coupling; route through `AGENT_VERIFY_CMD` |
 | portable `skills/*` | pending — genericize prose references (`nix-verification-loop`, `lib/invariants.nix`) |
 
-Each migration is its own small PR: source the lib, replace hardcoded paths with
-the `AGENT_*` vars, keep the script's embedded self-test green.
+Each migration sources the lib, replaces hardcoded paths with the `AGENT_*`
+vars, and keeps the script's embedded self-test green. Grouped into small PRs by
+shared concern (e.g. the outcome-reading family together).
+
+> **Seed gap found:** the policy-eval / route / review-stage family was seeded
+> without the `governance.yaml` / `model-routing.yaml` / `capability-profiles.yaml`
+> policy files they read (those live under `nixos-config`'s `.agents/`, not in
+> this snapshot). Their self-tests fail standalone with "policy file not found".
+> The policy-eval batch must seed these (engine-shipped defaults, or an example
+> consumer policy set) before it can be proven green here.
 
 ## Why this first
 

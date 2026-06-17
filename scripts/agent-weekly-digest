@@ -8,6 +8,10 @@
 # "human decisions needed" list. Read-only; files no comments or issues.
 set -euo pipefail
 
+# Centralized engine layout + consumer-config seam (AGENT_* path defaults).
+# shellcheck source-path=SCRIPTDIR source=lib/agent-env.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/agent-env.sh"
+
 usage() {
   cat <<'EOF'
 Usage: agent-weekly-digest [--dir <path>] [--since <date>] [--candidates-dir <path>]
@@ -481,9 +485,9 @@ EOF
 }
 
 main() {
-  local dir="${AGENT_OUTCOME_DIR:-.agents/state/outcomes}"
+  local dir="$AGENT_OUTCOME_DIR"
   local since=""
-  local candidates_dir=".agents/learning/candidates"
+  local candidates_dir="$AGENT_CANDIDATES_DIR"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in

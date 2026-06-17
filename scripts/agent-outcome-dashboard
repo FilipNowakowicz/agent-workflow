@@ -18,6 +18,10 @@
 # rather than crashing.
 set -euo pipefail
 
+# Centralized engine layout + consumer-config seam (AGENT_* path defaults).
+# shellcheck source-path=SCRIPTDIR source=lib/agent-env.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/agent-env.sh"
+
 usage() {
   cat <<'EOF'
 Usage: agent-outcome-dashboard [--dir <path>] [--out <path>]
@@ -318,7 +322,7 @@ self_test() {
 }
 
 main() {
-  local dir="${AGENT_OUTCOME_DIR:-.agents/state/outcomes}"
+  local dir="$AGENT_OUTCOME_DIR"
   local out=""
 
   while [[ $# -gt 0 ]]; do
