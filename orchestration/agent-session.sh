@@ -140,7 +140,7 @@ preflight_issue_auth() {
   if ! ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
     "$SSH_USER@$AGENT_FQDN" \
     "gh auth status >/dev/null" 2>/dev/null; then
-    echo "agent-session: gh auth failed on $AGENT_NAME (check hosts/gcp-agent/secrets/gh-hosts.yaml)" >&2
+    echo "agent-session: gh auth failed on $AGENT_NAME (check the host's gh credential setup)" >&2
     exit 1
   fi
 
@@ -173,7 +173,7 @@ EOF
   if ! ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
     "$SSH_USER@$AGENT_FQDN" "$remote_probe"; then
     echo "agent-session: claude auth/preflight failed on $AGENT_NAME" >&2
-    echo "agent-session: refresh hosts/gcp-agent/secrets/claude-credentials.enc from a working login and activate/reprovision the host" >&2
+    echo "agent-session: refresh the host's claude credentials from a working login and reprovision the host" >&2
     exit 1
   fi
 

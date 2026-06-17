@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-# Issue-loop orchestration entrypoint — runs ON gcp-agent.
+# Issue-loop orchestration entrypoint — runs ON the self-hosted agent host
+# (an on-demand VM started by agent-session.sh; "gcp-agent" in the original
+# dogfood deployment, but the host name is just AGENT_NAME/AGENT_FQDN to
+# agent-session.sh and irrelevant here).
 #
 # Given a target issue number (or a label filter), it drives the
 # issue-driven-development skill from a cold, up-to-date clone through to a
 # pushed PR, then returns and lets the idle-shutdown timer power the box off.
 #
 # Typical invocation from a workstation (starts the VM, then runs this on it):
-#   scripts/agent-session.sh -- nix/scripts/agent-run-issue.sh 169
-#   scripts/agent-session.sh -- nix/scripts/agent-run-issue.sh --label agent:ready
+#   scripts/agent-session.sh -- scripts/agent-run-issue.sh 169
+#   scripts/agent-session.sh -- scripts/agent-run-issue.sh --label agent:ready
 #
-# Or directly, once SSH'd into gcp-agent:
+# Or directly, once on the agent host (SSH'd in, or running locally):
 #   scripts/agent-run-issue.sh 169 170
 #   scripts/agent-run-issue.sh --label architecture-review
 #
@@ -20,11 +23,13 @@
 # attended runs.
 #
 # Env knobs:
-#   AGENT_REPO_DIR  repo clone to operate in (default: $HOME/nix)
+#   AGENT_REPO_DIR  repo clone to operate in (default: $HOME/agent-repo)
 #   BASE_BRANCH     branch to sync to before each issue (default: main)
 #   REPO_URL        HTTPS clone URL used to bootstrap AGENT_REPO_DIR when it
-#                    does not exist yet (default: this repo, via gh's PAT)
-#                    GitHub SSH push URLs are normalized back to HTTPS after
+#                    does not exist yet. Required if AGENT_REPO_DIR is not
+#                    already a clone; there is no default, since this script
+#                    is consumer-repo-agnostic. GitHub SSH push URLs are
+#                    normalized back to HTTPS after
 #                    clone setup: the agent host authenticates over HTTPS via
 #                    gh's credential helper and has no GitHub SSH key, so an
 #                    SSH push URL fails only at PR publication time, after a
@@ -74,13 +79,25 @@
 #   AGENT_ISSUE_COMMENTS
 #                   when 1, post start/finish breadcrumbs to each GitHub issue
 #                   for live operator visibility (default: 1; set 0 to disable).
+#   AGENT_VERIFICATION_GUIDANCE
+#                   one line of operator-supplied guidance, inserted into the
+#                   dispatch prompt, telling the inner session how to validate
+#                   its change before opening a PR (default: a generic pointer
+#                   at the repo's own test/build commands). Set this to your
+#                   repo's actual verification entrypoint, e.g. a
+#                   verification-loop skill name or a `make check`-style
+#                   command, for better-targeted validation.
+#   AGENT_RUNNER_LABEL
+#                   human-readable label for this runner, used only in the
+#                   "Agent run started" issue comment (default: "self-hosted
+#                   issue loop").
 #
 # v1 is attended: it opens PRs but never merges. You review and merge yourself.
 set -euo pipefail
 
-AGENT_REPO_DIR="${AGENT_REPO_DIR:-$HOME/nix}"
+AGENT_REPO_DIR="${AGENT_REPO_DIR:-$HOME/agent-repo}"
 BASE_BRANCH="${BASE_BRANCH:-main}"
-REPO_URL="${REPO_URL:-https://github.com/FilipNowakowicz/nixos-config.git}"
+REPO_URL="${REPO_URL:-}"
 AGENT_OUTCOME_DIR="${AGENT_OUTCOME_DIR:-.agents/state/outcomes}"
 AGENT_SESSION_DIR="${AGENT_SESSION_DIR:-.agents/state/sessions}"
 AGENT_REQUIRE_READY="${AGENT_REQUIRE_READY:-1}"
@@ -90,6 +107,8 @@ AGENT_MAX_TURNS="${AGENT_MAX_TURNS:-100}"
 AGENT_HEARTBEAT_SECONDS="${AGENT_HEARTBEAT_SECONDS:-60}"
 AGENT_INNER_KILL_GRACE_SECONDS="${AGENT_INNER_KILL_GRACE_SECONDS:-15}"
 AGENT_ISSUE_COMMENTS="${AGENT_ISSUE_COMMENTS:-1}"
+AGENT_VERIFICATION_GUIDANCE="${AGENT_VERIFICATION_GUIDANCE:-the test and build commands this repo defines for what you changed}"
+AGENT_RUNNER_LABEL="${AGENT_RUNNER_LABEL:-self-hosted issue loop}"
 AGENT_PROMOTED_LEARNING_LIMIT="${AGENT_PROMOTED_LEARNING_LIMIT:-3}"
 AGENT_PROMOTED_LEARNING_CHAR_BUDGET="${AGENT_PROMOTED_LEARNING_CHAR_BUDGET:-900}"
 SESSION_LOCK="/run/agent/session.lock"
@@ -200,7 +219,7 @@ preflight_push_auth() {
   # the final push will use.
   local repo_dir="$1"
   GIT_TERMINAL_PROMPT=0 git -C "$repo_dir" ls-remote --heads origin >/dev/null 2>&1 ||
-    die "cannot authenticate to origin non-interactively (check the scoped PAT / gh credential helper — hosts/gcp-agent/CLAUDE.md)"
+    die "cannot authenticate to origin non-interactively (check your scoped PAT / gh credential helper setup)"
 }
 
 # Pure classifier for a claude quota/auth probe: rc must be 0, the output must
@@ -233,7 +252,7 @@ preflight_claude_quota() {
   echo "agent-run-issue: claude quota/auth preflight failed (rc=$rc) — last output:" >&2
   tail -n 5 "$out" >&2 2>/dev/null || true
   rm -f "$out"
-  die "claude quota/auth preflight failed; not starting a billed session (refresh credentials or wait out the rate/session limit — hosts/gcp-agent/CLAUDE.md)"
+  die "claude quota/auth preflight failed; not starting a billed session (refresh credentials or wait out the rate/session limit)"
 }
 
 heartbeat_worktree_summary() {
@@ -677,13 +696,12 @@ the advisory likely-files hints below (if any), noting any large divergence in o
 sentence before proceeding — keep this to a few sentences, it is a checkpoint, not a \
 design doc. When the relevant files are not already obvious, use the \
 repo-map-query skill to locate them instead of broad cat/grep/find sweeps, then open \
-only the top likely files. Implement the smallest durable fix, validate with the \
-nix-verification-loop skill (the smallest meaningful scripts/validate.sh command for \
-what you changed). When you run nix validation, redirect its output to a file and read \
-back only the exit status and the last ~20 lines on failure — do NOT paste full build \
-or flake-check logs into the conversation, because the whole transcript is re-read on \
-every turn and large logs dominate cost. For a wider validation tier (e.g. \
-'scripts/validate.sh hosts' or 'heavy') or any exploration that would take more than a \
+only the top likely files. Implement the smallest durable fix, then validate with \
+${AGENT_VERIFICATION_GUIDANCE}. When you run a build or test command, redirect its \
+output to a file and read back only the exit status and the last ~20 lines on failure \
+— do NOT paste full build or test logs into the conversation, because the whole \
+transcript is re-read on every turn and large logs dominate cost. For a slower or \
+wider validation run, or any exploration that would take more than a \
 few file reads/greps, prefer dispatching a subagent (the Explore agent type for \
 read-only searches, a general-purpose agent for builds) and bring back only its \
 conclusion — that keeps the noisy run out of this session's transcript entirely, \
@@ -1142,7 +1160,7 @@ command -v jq >/dev/null 2>&1 || die "jq not found"
 
 # Fail fast if the scoped PAT is not wired — otherwise the run would burn a
 # session only to fail at clone/push/PR time.
-gh auth status >/dev/null 2>&1 || die "gh is not authenticated (provision the scoped PAT — hosts/gcp-agent/CLAUDE.md)"
+gh auth status >/dev/null 2>&1 || die "gh is not authenticated (provision a scoped PAT for this host)"
 
 # Bootstrap the clone on a fresh/reprovisioned host: nothing else creates
 # AGENT_REPO_DIR, and the host is disposable, so this is the steady-state path.
@@ -1151,9 +1169,10 @@ if [[ -d $AGENT_REPO_DIR/.git ]]; then
 elif [[ -e $AGENT_REPO_DIR ]]; then
   die "AGENT_REPO_DIR=$AGENT_REPO_DIR exists but is not a git clone (refusing to touch it)"
 else
+  [[ -n $REPO_URL ]] || die "AGENT_REPO_DIR=$AGENT_REPO_DIR does not exist and REPO_URL is not set; set REPO_URL to the HTTPS clone URL for the target repo"
   echo "agent-run-issue: bootstrapping clone of $REPO_URL at $AGENT_REPO_DIR ..." >&2
   git clone "$REPO_URL" "$AGENT_REPO_DIR" ||
-    die "clone of $REPO_URL failed (check the scoped PAT — hosts/gcp-agent/CLAUDE.md)"
+    die "clone of $REPO_URL failed (check your scoped PAT / gh credential helper setup)"
 fi
 ensure_push_safe_origin "$AGENT_REPO_DIR"
 preflight_push_auth "$AGENT_REPO_DIR"
@@ -1256,7 +1275,7 @@ post_started_comment() {
 
 - started_at: ${started_at}
 - base_branch: ${BASE_BRANCH}
-- runner: gcp-agent issue loop
+- runner: ${AGENT_RUNNER_LABEL}
 - mode: attended; opens PRs, never merges
 
 The runner will post a finish comment with status, blocker, branch, and linked PRs.
@@ -1427,7 +1446,7 @@ run_one() {
 
   # Hand the issue to Claude Code in headless mode, instructing it to follow the
   # repo's issue-driven-development skill end to end. Claude picks the branch,
-  # implements the smallest durable fix, validates via the nix-verification-loop,
+  # implements the smallest durable fix, validates via AGENT_VERIFICATION_GUIDANCE,
   # pushes, and opens a PR. It must NOT merge (attended v1).
   #
   # Seed the prompt with advisory candidate-path hints computed from the issue
