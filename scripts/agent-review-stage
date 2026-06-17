@@ -266,7 +266,19 @@ cmd_check() {
       local missing=()
       while IFS= read -r line; do
         [[ -n $line ]] || continue
-        if ! jq -e --arg c "$line" '.acceptance_criteria | any(.criterion == $c)' "$evidence" >/dev/null; then
+        # Match on a normalized form of both sides rather than exact string
+        # equality: lowercase, then collapse every run of non-alphanumeric
+        # characters (whitespace, markdown like ** or `, trailing periods) to a
+        # single space and trim. Exact `==` blocked an approved evidence file
+        # that genuinely covered every criterion whenever the reviewer's text
+        # differed only cosmetically (wrap, punctuation, emphasis). (#13)
+        if ! jq -e --arg c "$line" '
+          def norm: ascii_downcase
+            | gsub("[^a-z0-9]+"; " ")
+            | sub("^ +"; "") | sub(" +$"; "");
+          ($c | norm) as $cn
+          | .acceptance_criteria | any((.criterion | norm) == $cn)
+        ' "$evidence" >/dev/null; then
           missing+=("$line")
         fi
       done <<<"$criteria"
@@ -320,8 +332,20 @@ self_test() {
   git -C "$repo" add README.md
   git -C "$repo" commit -q -m seed
 
+  cp "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")" "$repo/.agents/scripts/"
   cp "$(agent_root)/scripts/agent-review-evidence-check" "$repo/.agents/scripts/"
   cp "$(agent_root)/scripts/agent-policy-eval" "$repo/.agents/scripts/"
+  cat >"$repo/.agents/governance.yaml" <<'EOF'
+default:
+  risk: low
+  requires_human_review: false
+  reason: "ordinary path"
+rules:
+  - pattern: ^\.sops\.yaml$
+    risk: high
+    requires_human_review: true
+    reason: "protected secrets policy"
+EOF
 
   local body="$tmp/body.md"
   cat >"$body" <<'EOF'
@@ -341,7 +365,7 @@ Example issue for the reviewer-stage self-test.
 EOF
 
   local script_path
-  script_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+  script_path="$repo/.agents/scripts/$(basename "${BASH_SOURCE[0]}")"
 
   # init: scaffolds one acceptance_criteria entry per bullet, result=blocked.
   local init_out
@@ -367,6 +391,22 @@ EOF
   printf 'README.md\n' >"$tmp/paths-readme.txt"
   out=$(cd "$repo" && "$script_path" check "$approved" --body-file "$body" --paths-from "$tmp/paths-readme.txt")
   [[ $out == *"approved"* ]] || die "self-test: expected approved check to pass (got: $out)"
+
+  # check: approved evidence whose criterion text differs only cosmetically
+  # (markdown emphasis, punctuation, extra internal whitespace) from the issue
+  # bullets still counts as covered. Exact `==` used to block these. (#13)
+  local cosmetic="$tmp/cosmetic.json"
+  jq '.result = "approved"
+      | .acceptance_criteria[0].criterion = "**First criterion** is covered"
+      | .acceptance_criteria[0].evidence = "covered"
+      | .acceptance_criteria[1].criterion = "Second criterion is covered, continued   on a wrapped line"
+      | .acceptance_criteria[1].evidence = "covered"
+      | .residual_risk = "none"
+      | .validation_commands = [{command: "true", result: "passed"}]' \
+    "$repo/$init_out" >"$cosmetic"
+  out=$(cd "$repo" && "$script_path" check "$cosmetic" --body-file "$body" --paths-from "$tmp/paths-readme.txt")
+  [[ $out == *"approved"* ]] ||
+    die "self-test: expected cosmetically-different criteria to still match the issue bullets (got: $out)"
 
   # check: approved evidence missing one criterion's coverage fails.
   local missing_criterion="$tmp/missing-criterion.json"
