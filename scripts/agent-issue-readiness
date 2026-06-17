@@ -165,7 +165,7 @@ Something is broken.
 
 ## Validation
 
-- `bash scripts/validate.sh docs`
+- `run the repo verification command`
 EOF
   )
 
