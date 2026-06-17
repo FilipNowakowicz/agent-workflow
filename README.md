@@ -22,10 +22,39 @@ migration:
 - **Later**, `nixos-config` consumes this repo as a flake input (see
   [`flake.nix`](flake.nix)) and deletes its local copies at that point.
 
-Because it's a snapshot, the carried-over skills and scripts still contain
-`nixos-config`-specific references (e.g. `scripts/validate.sh`,
-`nix-verification-loop`, `lib/invariants.nix`). Genericizing those — splitting
-"engine" from "consumer-local config" — is the first v2 work item.
+**v2 engine decoupling is complete.** All 18 control-plane + orchestration
+scripts and the 5 portable skills are repo-agnostic and pass `--self-test`
+standalone; generic policy defaults (`governance.yaml`, `model-routing.yaml`,
+`capability-profiles.yaml`) ship at the engine root; consumer-local config is
+isolated behind `scripts/lib/agent-env.sh` (`AGENT_VERIFY_CMD`, `AGENT_*` paths)
+and the `--policy`/`--routing`/`--profiles` flags. See
+[`docs/v2-engine-boundary.md`](docs/v2-engine-boundary.md) for the per-script
+migration record. The remaining nixos strings live only in self-test fixture
+data and the `learning/candidates/` seed corpus.
+
+## Consuming as a flake input
+
+A consumer repo pins this engine and renders its trees into the `.agents/`
+convention:
+
+```nix
+# flake.nix (consumer)
+inputs.agent-workflow.url = "github:FilipNowakowicz/agent-workflow";
+# then, e.g. in a derivation/home-manager activation that builds .agents/:
+#   ${inputs.agent-workflow.paths.controlPlane} -> .agents/scripts
+#   ${inputs.agent-workflow.paths.skills}       -> .agents/skills
+#   ${inputs.agent-workflow.paths.learning}     -> .agents/learning
+#   ${inputs.agent-workflow.paths.repoMap}      -> .agents/repo-map
+#   ${inputs.agent-workflow.paths.schemas}      -> .agents/schemas
+#   ${inputs.agent-workflow.paths.orchestration}/* -> scripts/agent-*.sh
+```
+
+The consumer supplies its own `agent.config.sh` (see
+[`agent.config.example.sh`](agent.config.example.sh)) setting `AGENT_VERIFY_CMD`
+and any path overrides, plus its own `governance.yaml` / `model-routing.yaml` /
+`capability-profiles.yaml` if it wants repo-specific risk classes. Wiring
+`nixos-config` to consume this (and deleting its local copies) is the deferred
+fork-forward capstone — tracked separately, not part of this engine work.
 
 ## Layout
 

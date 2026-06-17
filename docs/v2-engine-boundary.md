@@ -35,6 +35,13 @@ layout, so a consumer that adopts the convention needs no config file.
 
 ## Migration status
 
+> **Status: COMPLETE.** All 18 scripts (15 control-plane + 3 orchestration) and
+> all 5 portable skills are decoupled and pass `--self-test` standalone; generic
+> policy defaults ship at the engine root; `shellcheck -x` and `nix flake check`
+> are clean; the flake `paths` output resolves every tree. The engine is ready
+> for a consumer to pin as a flake input. Remaining nixos strings are confined to
+> self-test fixture data and the `learning/candidates/` seed corpus.
+
 | Script | Status |
 | --- | --- |
 | `agent-record-outcome` | **migrated** — reference implementation; self-test green |
