@@ -27,3 +27,7 @@ proposed_upgrade: terse-action-for-reviewer
 # triggers: [path-or-command-or-task-shape]
 # targets: [path-or-artifact-to-change]
 # risk: terse-risk-if-promoted-wrong
+# fix-pr: NNN  # the PR that actually LANDS this fix. Set this (not just a #NNN
+#              # in evidence) once the work is done: check-candidate-liveness.sh
+#              # marks a candidate resolved only from a merged fix-pr, so a
+#              # related/contrasting PR cited in evidence won't false-positive.

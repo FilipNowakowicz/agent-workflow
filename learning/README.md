@@ -35,8 +35,10 @@ If a fact would help a teammate's agent as much as your own, it is a candidate.
 - `scripts/review-candidates.sh` — groups open candidates for low-token reviewer
   triage and lists expired ones.
 - `scripts/check-candidate-liveness.sh` — flags open candidates whose evidence
-  already landed (PR merged / commit on HEAD), so a reviewer does not
-  re-implement a done fix.
+  already landed (a merged `fix-pr` / commit on HEAD), so a reviewer does not
+  re-implement a done fix. Only a PR named in the candidate's `fix-pr` field
+  marks it resolved; a `#NNN` cited in evidence as context is reported but never
+  flips the verdict on its own.
 - `scripts/validate-candidates.sh` — checks required routing fields and allowed
   categories.
 - `candidates/archive/` — `promoted`/`rejected`/`superseded` candidates land
@@ -124,5 +126,8 @@ its file leaves that queue, so triage never re-reads settled lessons:
 
 Evidence should cite a durable pointer — a **PR number** or a SHA on `main` —
 not a local `codex/*` branch name. Because this repo squash-merges, a pre-merge
-SHA stops being an ancestor of `main`, so a `#NNN` reference is what
-`check-candidate-liveness.sh` can actually verify later.
+SHA stops being an ancestor of `main`, so a PR reference is what
+`check-candidate-liveness.sh` can actually verify later. When the fix has
+landed, record the landing PR in the `fix-pr` field: liveness only treats a
+**merged `fix-pr`** as resolution, so a PR cited in evidence purely as
+related/contrasting context never false-positives the candidate as done.
