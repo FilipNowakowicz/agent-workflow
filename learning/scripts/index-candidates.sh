@@ -26,7 +26,13 @@ find "$candidate_dir" -maxdepth 1 -type f \( -name '*.md' -o -name '*.yml' -o -n
 
 while IFS= read -r path; do
   dedupe=$(field_from_path "$path" dedupe_key)
-  [ -n "$dedupe" ] && printf '%s\n' "$dedupe"
+  # Use `if`, not `[ -n ] && printf`: dedupe_key is optional, so when the LAST
+  # candidate lacks one the `&&` test is the while body's final command and the
+  # loop exits 1, which under `set -euo pipefail` fails this whole pipeline and
+  # aborts before the row-emitting loop runs — emitting only the header.
+  if [ -n "$dedupe" ]; then
+    printf '%s\n' "$dedupe"
+  fi
 done <"$candidate_list" |
   sort |
   uniq -c |
