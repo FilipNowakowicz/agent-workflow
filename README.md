@@ -50,8 +50,14 @@ If you are exploring the repo directly, start with the source trees:
    bash learning/scripts/validate-candidates.sh learning
    ```
 
-If you are thinking about consuming this from another repo, treat `flake.nix`
-as source-path export only for now. Installer/module outputs are still planned.
+If you are thinking about consuming this from another repo, pin `flake.nix`'s
+`paths` output as a flake input, then run [`install.sh`](install.sh) to render
+it into your repo's `.agents/` tree and root `scripts/agent-*.sh`
+entrypoints — see [`examples/consumer-flake/`](examples/consumer-flake/) for
+the end-to-end flow and
+[`docs/provider-consumer-layout.md`](docs/provider-consumer-layout.md) for
+the full consumption contract. A NixOS module is not part of this contract
+yet.
 
 ## Components
 

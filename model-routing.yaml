@@ -11,8 +11,8 @@ version: 1
 
 path_classes:
   - id: docs
-    description: "Top-level docs and operator documentation."
-    patterns: ["^README\\.md$", "^PLAN\\.md$", "^docs/"]
+    description: "Top-level docs, operator documentation, and examples."
+    patterns: ["^README\\.md$", "^PLAN\\.md$", "^docs/", "^examples/"]
     risk: low
     default_profile: doc-editor
     required_checks: ["git diff --check"]
@@ -35,6 +35,8 @@ path_classes:
         "^learning/",
         "^repo-map/",
         "^schemas/",
+        "^install\\.sh$",
+        "^check-flake-outputs\\.sh$",
       ]
     risk: medium
     default_profile: agent-workflow-engineer

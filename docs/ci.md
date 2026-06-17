@@ -30,10 +30,14 @@ bash orchestration/agent-review-pr.sh --self-test
 bash learning/scripts/validate-candidates.sh learning
 bash learning/scripts/scaffold-promotion-check.sh --self-test
 bash repo-map/scripts/validate.sh
+bash install.sh --self-test
 ```
 
-Flake check:
+Flake check, and the flake `paths` output smoke test (see
+[`docs/provider-consumer-layout.md`](provider-consumer-layout.md)):
 
 ```sh
 nix flake check
+bash check-flake-outputs.sh
+bash check-flake-outputs.sh --self-test
 ```

@@ -55,8 +55,33 @@ Until the installer contract is finalized, examples follow this rule:
   are examples from the original dogfood repo and should become configurable
   before public reuse.
 
-The flake currently exposes source paths only. It does not yet install files
-into a consumer repo by itself.
+## Consumption Contract
+
+The public contract for consuming this repo (issue #30) is flake paths
+**plus** an installer script, not a NixOS module or a built package:
+
+- `flake.nix`'s `paths` output exposes each provider source tree as a plain
+  Nix path. It is read-only and reproducible (pin a rev in `flake.lock`),
+  but it does not materialize files into a consumer repo's working tree —
+  that would require either a build step that writes outside the Nix store,
+  or a NixOS module wiring activation-time file management, both bigger
+  than this repo's current maturity warrants.
+- `install.sh` at this repo's root is the actual install step: given
+  `--source` (a checkout or `nix flake prefetch`-resolved store path of this
+  repo) and `--target` (the consumer repo root), it copies the source trees
+  into `.agents/` and the orchestration entrypoints into root-level
+  `scripts/agent-*.sh`, matching the table above. It is idempotent and
+  refuses to clobber an existing install without `--force`.
+- `check-flake-outputs.sh` is a local smoke test, independent of any
+  consumer, proving the flake's `paths` output resolves to real, non-empty
+  directories with expected marker files before anyone pins it.
+- `examples/consumer-flake/` shows the end-to-end flow: pinning the input in
+  a consumer `flake.nix`, then running `install.sh` against a
+  `nix flake prefetch`-resolved path.
+
+A NixOS dispatcher module is explicitly out of scope here — see issue #30's
+non-goals; it may fall out naturally once a real consumer needs activation-
+time install rather than an explicit, operator-run script.
 
 ## Provider-local Policy Metadata
 
