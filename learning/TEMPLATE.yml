@@ -1,0 +1,29 @@
+schema: learning-candidate/v1
+id: YYYY-MM-DD-short-kebab-slug
+date: YYYY-MM-DD
+expires: YYYY-MM-DD
+# open|promoted|rejected|superseded|expired
+status: open
+
+# Every field is single-line compact YAML: keep each value on the same line as
+# its key (use inline [..] lists, not block style). The validator's field check
+# is a same-line grep and rejects next-line block values.
+#
+# Routing for the reviewer. Keep values short and grep-friendly.
+route: implement-fix|promote-memory|promote-skill|promote-hook|promote-doc|reject
+best_form: invariant|test|ci-gate|hook|skill|doc|none
+
+# Evidence must be enough for a reviewer agent to reopen the real source.
+# Prefer a durable pointer — a PR number (#NNN) or a SHA already on main — over
+# a local codex/* branch name; check-candidate-liveness.sh can verify those.
+evidence: [pr-#NNN-or-sha-on-main-or-file-line-or-command-output-pointer]
+observation: terse-fact-not-story
+proposed_upgrade: terse-action-for-reviewer
+
+# Optional — fill only when they add routing signal. Omit the rest.
+# agent: claude|codex
+# type: behavior-upgrade|repo-fix|workflow-gotcha|policy-gap
+# dedupe_key: area:short-normalized-problem
+# triggers: [path-or-command-or-task-shape]
+# targets: [path-or-artifact-to-change]
+# risk: terse-risk-if-promoted-wrong

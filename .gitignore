@@ -1,0 +1,13 @@
+# Runtime telemetry / operator-local state — not repo policy.
+# Mirrors the nixos-config repo's ignore of .agents/state/*.
+/state/outcomes/*
+!/state/outcomes/.gitkeep
+/state/sessions/*
+!/state/sessions/.gitkeep
+/state/review/*
+!/state/review/.gitkeep
+
+# Nix
+/result
+/result-*
+.direnv/
