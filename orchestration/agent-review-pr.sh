@@ -72,12 +72,32 @@ repo_root() {
   CDPATH='' cd -- "$(script_dir)/.." && pwd
 }
 
+# Locate the control-plane scripts dir across layouts: standalone engine repo
+# (scripts/) and rendered-into-consumer (.agents/scripts/). Honors an explicit
+# AGENT_ENGINE_DIR; otherwise detects by presence of agent-merge-gate.
+engine_dir() {
+  local root d
+  if [[ -n ${AGENT_ENGINE_DIR:-} && -x ${AGENT_ENGINE_DIR}/agent-merge-gate ]]; then
+    printf '%s\n' "$AGENT_ENGINE_DIR"
+    return 0
+  fi
+  root="$(repo_root)"
+  for d in "$root/.agents/scripts" "$root/scripts"; do
+    [[ -x $d/agent-merge-gate ]] && {
+      printf '%s\n' "$d"
+      return 0
+    }
+  done
+  # Fall back to the consumer convention so error messages are actionable.
+  printf '%s/.agents/scripts\n' "$root"
+}
+
 review_stage_bin() {
-  printf '%s/.agents/scripts/agent-review-stage\n' "$(repo_root)"
+  printf '%s/agent-review-stage\n' "$(engine_dir)"
 }
 
 merge_gate_bin() {
-  printf '%s/.agents/scripts/agent-merge-gate\n' "$(repo_root)"
+  printf '%s/agent-merge-gate\n' "$(engine_dir)"
 }
 
 # Best-effort discovery of the issue a PR closes: prefer GitHub's structured
@@ -96,6 +116,8 @@ discover_linked_issue() {
 
 build_review_prompt() {
   local pr="$1" issue="$2" evidence="$3"
+  local stage
+  stage="$(review_stage_bin)"
   cat <<EOF
 You are the reviewer stage of an autonomous issue-to-PR loop. Review pull
 request #${pr} against its linked issue #${issue} and emit a structured
@@ -117,7 +139,7 @@ Steps:
    - validation_commands[]: the checks the PR ran and their results.
    - residual_risk: the honest residual risk if this merged.
 5. Validate your file with:
-   bash .agents/scripts/agent-review-stage check ${evidence} --issue ${issue}
+   bash ${stage} check ${evidence} --issue ${issue}
    Fix it until that check passes.
 
 Merge authority is decided downstream by agent-merge-gate; your only job is an
@@ -276,7 +298,7 @@ self_test() {
     {"criterion": "low-risk change", "evidence": "docs only"}
   ],
   "validation_commands": [
-    {"command": "bash scripts/validate.sh docs", "result": "passed"}
+    {"command": "run repo verification", "result": "passed"}
   ],
   "residual_risk": "Docs-only; CI gate still required."
 }
