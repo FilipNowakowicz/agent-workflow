@@ -1,0 +1,48 @@
+# Agent governance policy (advisory, opt-in) — ENGINE DEFAULT BASELINE.
+#
+# This is the generic default shipped with the agent-workflow engine. It
+# classifies changed repository paths by risk and whether they require human
+# review before any autonomous merge path may proceed. Evaluated by
+# scripts/agent-policy-eval (see that script's --self-test for the deterministic
+# self-check).
+#
+# A consumer repo overrides this by placing its own governance.yaml at the
+# conventional location (one level above the engine's scripts dir — i.e.
+# .agents/governance.yaml when the engine is rendered into .agents/scripts/), or
+# by passing --policy <path>. The rules below are intentionally repo-agnostic:
+# they protect secrets, CI trust boundaries, and the agent machinery itself —
+# concerns common to any repo running this engine.
+#
+# Patterns are POSIX ERE, matched with bash [[ =~ ]] against repo-relative
+# paths. The first matching rule wins; a path that matches no rule falls back to
+# `default`. This file does not itself enforce anything; it is the single,
+# versioned, deterministic place to ask "does this changed path need a human?"
+# Models must not edit this file (or the evaluator) to grant themselves autonomy.
+version: 1
+
+default:
+  risk: low
+  requires_human_review: false
+  reason: "No protected-path rule matched."
+
+rules:
+  - pattern: (^|/)secrets/
+    risk: high
+    requires_human_review: true
+    reason: "Encrypted secrets material."
+  - pattern: \.sops\.yaml$
+    risk: high
+    requires_human_review: true
+    reason: "sops key/recipient policy controls who can decrypt secrets."
+  - pattern: ^\.github/workflows/
+    risk: high
+    requires_human_review: true
+    reason: "CI/CD workflow definitions control automation trust boundaries."
+  - pattern: ^(\.agents/governance\.yaml|\.agents/scripts/.+|scripts/agent-[^/]+\.sh|\.claude/hooks/.+|\.claude/settings\.json|\.codex/hooks\.json|\.codex/config\.toml)$
+    risk: high
+    requires_human_review: true
+    reason: "Agent workflow policy, hooks, scripts, or config; models must not grant themselves authority here."
+  - pattern: \.age$
+    risk: high
+    requires_human_review: true
+    reason: "Age key material."
