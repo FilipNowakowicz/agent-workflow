@@ -9,6 +9,10 @@
 # being dispatched.
 set -euo pipefail
 
+# Centralized engine layout + consumer-config seam (AGENT_* path defaults).
+# shellcheck source-path=SCRIPTDIR source=lib/agent-env.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/agent-env.sh"
+
 usage() {
   cat <<'EOF'
 Usage: agent-dispatch [--label <name>] [--max-issues <n>]
@@ -45,17 +49,17 @@ Env knobs (mainly for testing):
   AGENT_DISPATCH_RUNNER          Runner command (default:
                                   scripts/agent-run-issue.sh).
   AGENT_DISPATCH_READINESS       Readiness check command (default:
-                                  .agents/scripts/agent-issue-readiness).
+                                  <engine>/agent-issue-readiness).
   AGENT_DISPATCH_LIVENESS        Liveness gate command (default:
-                                  .agents/scripts/agent-liveness-gate).
+                                  <engine>/agent-liveness-gate).
   AGENT_DISPATCH_RECORD_OUTCOME  Outcome recorder command (default:
-                                  .agents/scripts/agent-record-outcome).
+                                  <engine>/agent-record-outcome).
   AGENT_DISPATCH_COMMENTS        Post GitHub bounce comments for non-ready
                                   issues (default: 1; set 0 to disable).
   AGENT_OUTCOME_DIR              Outcome record directory (default:
-                                  .agents/state/outcomes).
+                                  .agents/state/outcomes; see agent-env.sh).
   AGENT_REPO_DIR                 Repo dir passed to agent-record-outcome
-                                  (default: .).
+                                  (default: repo root / git toplevel).
   BASE_BRANCH                    Base branch recorded in skip outcomes
                                   (default: main).
 
@@ -74,13 +78,16 @@ utc_now() {
   date -u '+%Y-%m-%dT%H:%M:%SZ'
 }
 
+# Sibling engine scripts resolve via AGENT_ENGINE_DIR (from agent-env.sh), so
+# they are found whether this runs standalone or rendered into a consumer's
+# .agents/scripts/. The runner is the consumer's orchestration entrypoint, so it
+# stays a consumer-relative default.
 AGENT_DISPATCH_RUNNER="${AGENT_DISPATCH_RUNNER:-scripts/agent-run-issue.sh}"
-AGENT_DISPATCH_READINESS="${AGENT_DISPATCH_READINESS:-.agents/scripts/agent-issue-readiness}"
-AGENT_DISPATCH_LIVENESS="${AGENT_DISPATCH_LIVENESS:-.agents/scripts/agent-liveness-gate}"
-AGENT_DISPATCH_RECORD_OUTCOME="${AGENT_DISPATCH_RECORD_OUTCOME:-.agents/scripts/agent-record-outcome}"
+AGENT_DISPATCH_READINESS="${AGENT_DISPATCH_READINESS:-$AGENT_ENGINE_DIR/agent-issue-readiness}"
+AGENT_DISPATCH_LIVENESS="${AGENT_DISPATCH_LIVENESS:-$AGENT_ENGINE_DIR/agent-liveness-gate}"
+AGENT_DISPATCH_RECORD_OUTCOME="${AGENT_DISPATCH_RECORD_OUTCOME:-$AGENT_ENGINE_DIR/agent-record-outcome}"
 AGENT_DISPATCH_COMMENTS="${AGENT_DISPATCH_COMMENTS:-1}"
-AGENT_OUTCOME_DIR="${AGENT_OUTCOME_DIR:-.agents/state/outcomes}"
-AGENT_REPO_DIR="${AGENT_REPO_DIR:-.}"
+# AGENT_OUTCOME_DIR and AGENT_REPO_DIR are provided by agent-env.sh (sourced above).
 BASE_BRANCH="${BASE_BRANCH:-main}"
 
 # Fixed blocker reason for issues skipped by the pre-dispatch readiness check.

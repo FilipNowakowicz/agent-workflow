@@ -39,7 +39,7 @@ layout, so a consumer that adopts the convention needs no config file.
 | --- | --- |
 | `agent-record-outcome` | **migrated** — reference implementation; self-test green |
 | `agent-outcome-index`, `agent-outcome-stats`, `agent-outcome-dashboard`, `agent-weekly-digest` | **migrated** — `AGENT_OUTCOME_DIR` / `AGENT_CANDIDATES_DIR`; self-tests green |
-| `agent-dispatch` | pending — also changes repo-dir default (`.` → git toplevel) and sibling-script defaults (`AGENT_ENGINE_DIR`); needs its own review |
+| `agent-dispatch` | **migrated** — sibling scripts resolve via `AGENT_ENGINE_DIR`; repo-dir default `.` → git toplevel. Fixed a latent bug: its self-test was failing standalone because the recorder default (`.agents/scripts/...`) didn't resolve outside a consumer checkout |
 | `agent-policy-eval`, `agent-route`, `agent-review-stage`, `agent-merge-gate` | **blocked** — depend on consumer policy files (`governance.yaml`, `model-routing.yaml`, `capability-profiles.yaml`) that were never seeded; their self-tests fail standalone today. Seed those (as engine defaults or example consumer config) in the same PR |
 | `agent-issue-readiness`, `agent-liveness-gate`, `agent-dispatchable-issues`, `agent-routing-check`, `agent-review-evidence-check` | pending |
 | `orchestration/*` (`agent-run-issue`, `agent-session`, `agent-review-pr`) | pending — heaviest `validate.sh` / `.agents/` coupling; route through `AGENT_VERIFY_CMD` |
