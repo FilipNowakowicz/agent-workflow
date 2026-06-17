@@ -2,7 +2,7 @@ schema: learning-candidate/v1
 id: 2026-06-13-gh-pr-create-needs-explicit-head-base
 date: 2026-06-13
 expires: 2026-12-13
-status: open
+status: superseded
 
 route: promote-doc
 best_form: doc
@@ -13,3 +13,4 @@ proposed_upgrade: in-issue-driven-development-skill-step-8-note-that-if-gh-pr-cr
 type: workflow-gotcha
 triggers: [gh pr create, issue-driven-development step 8]
 targets: [.agents/skills/issue-driven-development/SKILL.md]
+curation_note: "already promoted: skills/issue-driven-development/SKILL.md documents passing --head/--base explicitly to gh pr create."

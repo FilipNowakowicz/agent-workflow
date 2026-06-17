@@ -2,7 +2,7 @@ schema: learning-candidate/v1
 id: 2026-06-14-agent-run-issue-cost-scales-with-turns
 date: 2026-06-14
 expires: 2026-09-12
-status: open
+status: superseded
 
 route: implement-fix
 best_form: test
@@ -16,3 +16,4 @@ dedupe_key: agent-run-issue:session-cost-scales-with-turn-count
 triggers: [scripts/agent-run-issue.sh, claude -p, cache_read_input_tokens, num_turns, .agents/state/sessions]
 targets: [scripts/agent-run-issue.sh]
 risk: "too-low a --max-turns truncates legitimate multi-step nix work mid-session, producing blocked outcomes that need re-runs"
+curation_note: "already implemented: orchestration/agent-run-issue.sh enforces AGENT_MAX_TURNS with a turn-cap blocker, and its dispatch prompt instructs redirecting build/test output to a file and reading back only the tail."

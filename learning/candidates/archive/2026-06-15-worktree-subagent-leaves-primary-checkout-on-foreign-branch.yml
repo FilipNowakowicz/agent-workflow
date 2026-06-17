@@ -2,7 +2,7 @@ schema: learning-candidate/v1
 id: 2026-06-15-worktree-subagent-leaves-primary-checkout-on-foreign-branch
 date: 2026-06-15
 expires: 2026-12-15
-status: open
+status: superseded
 
 route: promote-doc
 best_form: doc
@@ -14,3 +14,4 @@ proposed_upgrade: in-issue-driven-development-and-any-stacked-PR-orchestration-g
 type: workflow-gotcha
 triggers: [Agent tool isolation:worktree, sequential stacked-branch PR dispatch, "operate only inside your assigned worktree" instruction]
 targets: [.agents/skills/issue-driven-development/SKILL.md]
+curation_note: "already promoted: skills/issue-driven-development/SKILL.md explicitly cites this candidate and documents checking the primary checkout's branch/HEAD before and after a stacked worktree dispatch."

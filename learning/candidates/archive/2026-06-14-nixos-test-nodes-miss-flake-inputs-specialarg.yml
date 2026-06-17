@@ -2,7 +2,7 @@ schema: learning-candidate/v1
 id: 2026-06-14-nixos-test-nodes-miss-flake-inputs-specialarg
 date: 2026-06-14
 expires: 2026-09-14
-status: open
+status: rejected
 
 route: implement-fix
 best_form: test
@@ -14,3 +14,4 @@ dedupe_key: nixos-tests:flake-inputs-not-threaded-into-test-nodes
 triggers: [tests/nixos/*.nix, "nixosTest/runTest node importing a profile that uses the inputs module arg", "error: attribute 'inputs' missing while building nodes.*.system.build.toplevel"]
 targets: [tests/nixos/homeserver-gcp-smoke.nix, flake/checks.nix]
 risk: forcing-toplevel-in-light-lane-adds-build-cost-if-scoped-too-broadly
+curation_note: "not applicable to this provider repo: targets NixOS test infrastructure (tests/nixos/homeserver-gcp-smoke.nix, flake/checks.nix) that only exists in the nixos-config consumer repo."

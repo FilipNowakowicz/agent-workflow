@@ -2,7 +2,7 @@ schema: learning-candidate/v1
 id: 2026-06-14-shellcheck-backtick-treefmt-loop
 date: 2026-06-14
 expires: 2026-12-14
-status: open
+status: rejected
 route: promote-skill
 best_form: skill
 evidence: [PR-#310 lint failed on ShellCheck SC2016 for literal backtick regex/test strings; local `nix fmt -- --fail-on-change` rewrote escaped-backtick double-quoted strings back to single-quoted literals; final fix used `local backtick=$'\x60'` and passed `nix fmt -- --fail-on-change`, ShellCheck, and `bash scripts/validate.sh docs`]
@@ -14,3 +14,4 @@ dedupe_key: shell:literal-backtick-treefmt-shellcheck-loop
 triggers: [ShellCheck SC2016, treefmt, shfmt, literal backticks, shell regex]
 targets: [.agents/skills/nix-verification-loop/SKILL.md, .agents/skills/issue-driven-development/SKILL.md]
 risk: stale if formatter or ShellCheck behavior changes
+curation_note: "not applicable to this provider repo: targets the nix-verification-loop skill, which deliberately stays in the nixos-config consumer repo (see README.md "Layout")."

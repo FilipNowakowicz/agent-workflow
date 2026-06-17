@@ -151,7 +151,11 @@ starting from zero.
 
 ## Learning candidates
 
-`learning/candidates/` carries the **active** queue from `nixos-config` as
-representative pipeline data (the `archive/` of historical nix-specific lessons
-was intentionally left behind). Treat these as example inputs while developing
-the review/promotion tooling, not as this repo's own lessons.
+`learning/candidates/` holds two open candidates that are genuine active
+backlog for this repo's own control-plane code. The rest of the
+`nixos-config`-seeded queue has been curated (issue #29): resolved or
+not-applicable items moved to `learning/candidates/archive/`, and one strong
+capture kept at `learning/examples/captured-candidate/` purely as a public
+example of the candidate format. See
+[`learning/README.md`](learning/README.md#candidate-status-in-this-provider-repo)
+for the full breakdown.
