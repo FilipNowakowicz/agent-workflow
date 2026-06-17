@@ -286,6 +286,8 @@ never_auto_merge:
   - ".agent/model-routing.yaml"
   - ".agent/scripts/agent-policy-eval"
   - ".agent/scripts/agent-freeze"
+  - ".agent/scripts/agent-route"
+  - ".agent/schemas/**"
 
 human_review_forever:
   - path_class: secrets
@@ -358,7 +360,7 @@ acceptance_criteria:
 non_goals:
   - string
 
-risk_tier: docs | scripts | nix_modules | profiles | security | secrets | policy
+risk_tier: docs | scripts | nix_modules | profiles | security | secrets | agent_policy
 
 affected_paths:
   - glob
@@ -490,7 +492,7 @@ subsystems:
     description: "Agent workflow machinery."
     paths:
       - ".agent/**"
-      - "scripts/agent-*"
+      - ".agent/scripts/agent-*"
     risk: high
     human_review: true
     required_checks:
@@ -617,7 +619,7 @@ routes:
     profiles: balanced_planner
     security: adversarial_reviewer
     secrets: human_only
-    policy: human_only
+    agent_policy: human_only
 
   implementation:
     docs: codex_executor
@@ -626,7 +628,7 @@ routes:
     profiles: codex_executor
     security: codex_executor
     secrets: human_only
-    policy: human_only
+    agent_policy: human_only
 
   review:
     docs: cheap_triage
@@ -635,7 +637,7 @@ routes:
     profiles: adversarial_reviewer
     security: adversarial_reviewer
     secrets: human_only
-    policy: human_only
+    agent_policy: human_only
 
 escalation:
   on_validation_failure:
@@ -643,8 +645,8 @@ escalation:
     then: switch_executor_or_block
 
   on_large_diff:
-    files_changed_over: 8
-    lines_changed_over: 300
+    files_changed_at_or_over: 8
+    lines_changed_at_or_over: 300
     then_review: adversarial_reviewer
 
   on_model_disagreement:
@@ -1045,7 +1047,11 @@ global_denies:
   - ".agent/governance.yaml"
   - ".agent/autonomy-policy.yaml"
   - ".agent/capability-profiles.yaml"
+  - ".agent/model-routing.yaml"
   - ".agent/scripts/agent-policy-eval"
+  - ".agent/scripts/agent-freeze"
+  - ".agent/scripts/agent-route"
+  - ".agent/schemas/**"
 
 required_conditions_for_auto_merge:
   - issue_ready
@@ -1126,7 +1132,7 @@ learning loop
 
   "subsystems": ["nixos_modules"],
   "path_classes": ["nix_modules"],
-  "risk_tier": "medium_high",
+  "risk_tier": "nix_modules",
 
   "changed_paths": [],
   "files_changed": 4,
