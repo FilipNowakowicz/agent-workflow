@@ -1,0 +1,67 @@
+name: CI
+
+# Deterministic, local-reproducible checks only. No job here requires
+# Claude/Codex, a GitHub write token, GCP, SSH, or any other private host
+# state — see docs/ci.md for the equivalent commands to run locally.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  whitespace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: git diff --check (whitespace/conflict markers introduced by this change)
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            base="$(git hash-object -t tree /dev/null)"
+          fi
+          git diff --check "$base" "${{ github.sha }}"
+
+  self-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Control-plane script self-tests
+        run: |
+          set -euo pipefail
+          for f in scripts/agent-*; do
+            [[ -x $f ]] || continue
+            grep -q -- '--self-test' "$f" || continue
+            echo "== $f --self-test =="
+            bash "$f" --self-test
+          done
+      # orchestration/agent-review-pr.sh is intentionally excluded: it still
+      # assumes the installed .agents/ consumer layout (issue #25) and fails
+      # --self-test in this provider checkout.
+      - name: Orchestration entrypoint self-tests
+        run: |
+          set -euo pipefail
+          bash orchestration/agent-session.sh --self-test
+          bash orchestration/agent-run-issue.sh --self-test
+      - name: Learning pipeline checks
+        run: |
+          set -euo pipefail
+          bash learning/scripts/validate-candidates.sh learning
+          bash learning/scripts/scaffold-promotion-check.sh --self-test
+      - name: Repo-map smoke test
+        run: bash repo-map/scripts/validate.sh
+
+  nix-flake-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v27
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - run: nix flake check
