@@ -41,7 +41,7 @@ layout, so a consumer that adopts the convention needs no config file.
 | `agent-outcome-index`, `agent-outcome-stats`, `agent-outcome-dashboard`, `agent-weekly-digest` | **migrated** — `AGENT_OUTCOME_DIR` / `AGENT_CANDIDATES_DIR`; self-tests green |
 | `agent-dispatch` | **migrated** — sibling scripts resolve via `AGENT_ENGINE_DIR`; repo-dir default `.` → git toplevel. Fixed a latent bug: its self-test was failing standalone because the recorder default (`.agents/scripts/...`) didn't resolve outside a consumer checkout |
 | `agent-policy-eval`, `agent-review-stage` | **unblocked** — seeded a generic engine-default `governance.yaml` at the engine root (the default `<engine>/../governance.yaml` path); both self-tests now pass standalone. No script edit needed: the consumer overrides via its own `governance.yaml` / `--policy`. review-stage was failing only because its policy-eval call couldn't find that file |
-| `agent-route`, `agent-merge-gate` | **blocked** — still need generic default `model-routing.yaml` + `capability-profiles.yaml` (route's self-test asserts path-class content, so genericize against it); merge-gate chains route |
+| `agent-route`, `agent-merge-gate` | **done** — seeded generic `model-routing.yaml` + `capability-profiles.yaml` (repo-agnostic classes: docs / learning-candidates / agent-workflow / security-secrets / ci-workflows / agent-instructions; generic profiles). Rewrote route's self-test to the generic classes (dropped nix-modules/flake cases) and fixed merge-gate's medium-risk fixture (`flake.nix` → `.agents/schemas/*`). Both self-tests pass standalone |
 | `agent-issue-readiness`, `agent-liveness-gate`, `agent-dispatchable-issues`, `agent-routing-check`, `agent-review-evidence-check` | pending |
 | `orchestration/*` (`agent-run-issue`, `agent-session`, `agent-review-pr`) | pending — heaviest `validate.sh` / `.agents/` coupling; route through `AGENT_VERIFY_CMD` |
 | portable `skills/*` | pending — genericize prose references (`nix-verification-loop`, `lib/invariants.nix`) |
@@ -55,11 +55,10 @@ shared concern (e.g. the outcome-reading family together).
 > files they read. Resolution: ship **generic engine-default** policy files at
 > the engine root (the scripts' default `<engine>/../<file>` path); consumers
 > override with their own copies or `--policy`/`--routing`/`--profiles`.
-> `governance.yaml` is done (its rules were already repo-agnostic). The routing +
-> capability-profile defaults still need genericizing — nixos-config's versions
-> carry `validate.sh` checks and `nix-modules` path classes, and `agent-route`'s
-> self-test asserts that content, so the generic files and the self-test move
-> together.
+> **Closed.** `governance.yaml`, `model-routing.yaml`, and
+> `capability-profiles.yaml` now ship as generic engine defaults at the engine
+> root; the route/merge-gate self-tests were moved to the generic classes in the
+> same batch. The whole policy family passes standalone.
 
 ## Why this first
 

@@ -408,9 +408,9 @@ self_test() {
   printf '%s' "$out" | jq -e '
     .risk == "low"
     and .route == "auto"
-    and .default_profile == "doc-editor"
+    and .default_profile == "doc-agent"
     and .path_classes == ["docs"]
-    and (.capability_profile.agent == "gemini-cli")
+    and (.capability_profile.agent == "claude-code")
     and (.path_class_stats | type == "object")
   ' >/dev/null || die "self-test: unexpected docs decision: $out"
 
@@ -424,7 +424,7 @@ self_test() {
   ' >/dev/null || die "self-test: unexpected learning-candidates decision: $out"
 
   # root CLAUDE.md: explicit agent-instructions class, human review — not
-  # "unclassified" noise. Host runbooks under hosts/ stay docs.
+  # "unclassified" noise.
   out=$(printf 'CLAUDE.md\n' | "$script_path" --json)
   printf '%s' "$out" | jq -e '
     .risk == "high"
@@ -432,34 +432,15 @@ self_test() {
     and .path_classes == ["agent-instructions"]
     and .default_profile == null
   ' >/dev/null || die "self-test: unexpected agent-instructions decision: $out"
-  out=$(printf 'hosts/main/CLAUDE.md\n' | "$script_path" --json)
-  printf '%s' "$out" | jq -e '.path_classes == ["docs"]' >/dev/null ||
-    die "self-test: expected host runbook to stay in docs: $out"
 
-  # flake.lock: dependency pin, nix-modules, not unclassified.
-  out=$(printf 'flake.lock\n' | "$script_path" --json)
-  printf '%s' "$out" | jq -e '
-    .path_classes == ["nix-modules"]
-    and .route == "auto"
-  ' >/dev/null || die "self-test: unexpected flake.lock decision: $out"
-
-  # agent workflow scripts: medium risk, auto route, agent-workflow-engineer.
+  # agent workflow scripts: medium risk, auto route, workflow-agent.
   out=$(printf '.agents/scripts/agent-route\n' | "$script_path" --json)
   printf '%s' "$out" | jq -e '
     .risk == "medium"
     and .route == "auto"
-    and .default_profile == "agent-workflow-engineer"
-    and .path_classes == ["agent-workflow-scripts"]
+    and .default_profile == "workflow-agent"
+    and .path_classes == ["agent-workflow"]
   ' >/dev/null || die "self-test: unexpected agent-workflow decision: $out"
-
-  # nix modules: medium risk, auto route, nix-engineer.
-  out=$(printf 'flake.nix\n' | "$script_path" --json)
-  printf '%s' "$out" | jq -e '
-    .risk == "medium"
-    and .route == "auto"
-    and .default_profile == "nix-engineer"
-    and .path_classes == ["nix-modules"]
-  ' >/dev/null || die "self-test: unexpected nix-modules decision: $out"
 
   # security/secrets: high risk, human-review route, no auto profile.
   out=$(printf '.sops.yaml\n' | "$script_path" --json)
@@ -514,7 +495,7 @@ self_test() {
 
   # Text table mode includes an OVERALL summary row.
   out=$(printf 'docs/architecture.md\n' | "$script_path")
-  [[ $out == *$'\n'"OVERALL"$'\t'"low"$'\t'"doc-editor"$'\t'"auto" ]] ||
+  [[ $out == *$'\n'"OVERALL"$'\t'"low"$'\t'"doc-agent"$'\t'"auto" ]] ||
     die "self-test: unexpected table output: $out"
 
   # --outcome-dir: path_class_stats is populated for a path class with
@@ -547,7 +528,7 @@ self_test() {
   printf '%s' "$out" | jq -e '
     .risk == "low"
     and .route == "auto"
-    and .default_profile == "doc-editor"
+    and .default_profile == "doc-agent"
     and .path_classes == ["docs"]
     and (.path_class_stats.docs.total == 2)
     and (.path_class_stats.docs.success == 1)

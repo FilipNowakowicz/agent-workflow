@@ -1,0 +1,36 @@
+# Advisory capability profiles — ENGINE DEFAULT BASELINE.
+#
+# Generic, repo-agnostic worker capability profiles shipped with the engine.
+# Each profile pairs an agent/tool with the path classes it may touch, a max
+# risk tier, required checks, and an escalation note. A consumer overrides with
+# its own capability-profiles.yaml at the engine's parent dir
+# (.agents/capability-profiles.yaml) or via --profiles. Parsed by
+# scripts/agent-route (restricted YAML dialect; keep structure).
+schema: agent-capability-profiles/v1
+version: 1
+
+profiles:
+  - id: doc-agent
+    agent: claude-code
+    allowed_path_classes: ["docs"]
+    max_risk: low
+    required_checks: ["repo documentation/link check", "git diff --check"]
+    escalation: "Escalate if docs imply behavior, security, or deploy changes."
+  - id: workflow-agent
+    agent: claude-code
+    allowed_path_classes: ["learning-candidates", "agent-workflow", "agent-instructions"]
+    max_risk: high
+    required_checks: ["targeted shellcheck", "engine self-tests", "git diff --check"]
+    escalation: "Escalate before granting merge authority, changing hooks, or weakening policy."
+  - id: security-review
+    agent: claude-code
+    allowed_path_classes: ["security-secrets", "ci-workflows"]
+    max_risk: high
+    required_checks: ["repo verification", "human review"]
+    escalation: "Always require human review before merge or live action."
+  - id: ci-review
+    agent: claude-code
+    allowed_path_classes: ["ci-workflows"]
+    max_risk: high
+    required_checks: ["workflow-specific local proof", "human review"]
+    escalation: "Escalate before changing required checks, runners, tokens, or merge gates."

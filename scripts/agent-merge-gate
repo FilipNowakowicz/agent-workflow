@@ -372,7 +372,10 @@ EOF
   local low="$tmp/low.txt" high="$tmp/high.txt" medium="$tmp/medium.txt"
   printf 'docs/architecture.md\n' >"$low"
   printf '.sops.yaml\n' >"$high"
-  printf 'flake.nix\n' >"$medium"
+  # A medium-risk path that is NOT governance-protected, to isolate the
+  # "risk too high for auto" reason: .agents/schemas/* routes to the
+  # agent-workflow class (medium) but matches no protected governance rule.
+  printf '.agents/schemas/example.json\n' >"$medium"
 
   # Low-risk path + approved evidence -> auto.
   out=$("$script_path" --files-from "$low" --evidence "$approved" --json)
@@ -394,7 +397,7 @@ EOF
   jq -e '.decision == "human" and .route == "human-review" and .requires_human_review == true' \
     <<<"$out" >/dev/null || die "self-test: expected protected path to be human (got: $out)"
 
-  # Medium-risk path (flake.nix) + approved evidence -> human (risk too high).
+  # Medium-risk path (.agents/schemas/*) + approved evidence -> human (risk too high).
   out=$("$script_path" --files-from "$medium" --evidence "$approved" --json)
   jq -e '.decision == "human" and .risk == "medium"' \
     <<<"$out" >/dev/null || die "self-test: expected medium-risk to be human (got: $out)"

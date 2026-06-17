@@ -1,0 +1,55 @@
+# Advisory model-routing metadata — ENGINE DEFAULT BASELINE.
+#
+# Generic, repo-agnostic path-class routing shipped with the agent-workflow
+# engine. Maps changed paths to a path class, risk tier, default capability
+# profile, and required checks. scripts/agent-route derives the route from risk:
+# a "high" class routes to human-review (no auto profile); low/medium route
+# auto.
+#
+# A consumer overrides this with its own model-routing.yaml at the engine's
+# parent dir (.agents/model-routing.yaml when the engine is rendered into
+# .agents/scripts/) or via --routing. Language/build-system-specific path
+# classes (e.g. "nix-modules", "rust-crate") belong in the consumer's copy, not
+# here. Parsed by scripts/agent-route (restricted YAML dialect; keep structure).
+schema: agent-model-routing/v1
+version: 1
+
+path_classes:
+  - id: docs
+    description: "Markdown and operator documentation."
+    patterns: ["^README\\.md$", "^docs/", "(^|/)CHANGELOG\\.md$"]
+    risk: low
+    default_profile: doc-agent
+    required_checks: ["repo documentation/link check", "git diff --check"]
+  # Must precede agent-workflow: its broad ^\.agents/ pattern would otherwise
+  # classify run-produced candidate files as workflow code.
+  - id: learning-candidates
+    description: "Captured learning candidates — run byproducts, not workflow code."
+    patterns: ["^\\.agents/learning/candidates/"]
+    risk: low
+    default_profile: workflow-agent
+    required_checks: ["validate learning candidates"]
+  - id: agent-workflow
+    description: "Agent workflow engine: scripts, schemas, skills, policy metadata."
+    patterns: ["^\\.agents/", "^scripts/agent-", "^orchestration/agent-"]
+    risk: medium
+    default_profile: workflow-agent
+    required_checks: ["targeted shellcheck", "engine self-tests", "git diff --check"]
+  - id: security-secrets
+    description: "Secrets policy, encrypted material, keys, and security boundaries."
+    patterns: ["^\\.sops\\.yaml$", "(^|/)secrets/", "\\.age$", "\\.enc\\.yaml$"]
+    risk: high
+    default_profile: security-review
+    required_checks: ["repo verification", "human review"]
+  - id: ci-workflows
+    description: "CI workflow definitions and automation trust boundaries."
+    patterns: ["^\\.github/workflows/", "^\\.github/actions/"]
+    risk: high
+    default_profile: ci-review
+    required_checks: ["workflow-specific local proof", "human review"]
+  - id: agent-instructions
+    description: "Root agent instruction and harness config files (CLAUDE.md, .claude/, .codex/)."
+    patterns: ["^CLAUDE\\.md$", "^\\.claude/", "^\\.codex/"]
+    risk: high
+    default_profile: workflow-agent
+    required_checks: ["repo documentation/link check", "human review"]
