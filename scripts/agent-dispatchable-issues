@@ -37,11 +37,14 @@ die() {
 }
 
 # Filter a JSON array of {number,title,labels:[{name}]} issues, excluding any
-# whose labels include "agent:not-ready" or "agent:blocked".
+# whose labels include "agent:not-ready" or "agent:blocked". Sorted ascending
+# by issue number: gh returns issues newest-first, but the documented contract
+# (and agent-dispatch, which consumes this under a tight --max-issues budget)
+# expects lowest-numbered first.
 filter_eligible() {
   jq -c '[.[] | select(
     (.labels | map(.name) | any(. == "agent:not-ready" or . == "agent:blocked")) | not
-  )]'
+  )] | sort_by(.number)'
 }
 
 self_test() {
@@ -75,6 +78,18 @@ JSON
   exit 0
 fi
 
+if [[ $1 == issue && $2 == list && $* == *"--label order-test"* ]]; then
+  # gh's native order is newest-first; emit out of order to prove we sort.
+  cat <<'JSON'
+[
+  {"number":5,"title":"Newer","labels":[{"name":"order-test"}]},
+  {"number":2,"title":"Older","labels":[{"name":"order-test"}]},
+  {"number":9,"title":"Newest","labels":[{"name":"order-test"}]}
+]
+JSON
+  exit 0
+fi
+
 printf 'unexpected gh invocation: %s\n' "$*" >&2
 exit 1
 EOF
@@ -101,6 +116,16 @@ EOF
   if PATH="$bin:$PATH" "$script_path" --bogus >/dev/null 2>&1; then
     die "self-test: expected --bogus to fail"
   fi
+
+  # Output is sorted ascending by issue number regardless of gh's native order
+  # (text mode emits one number per line).
+  out=$(PATH="$bin:$PATH" "$script_path" --label order-test) || die "self-test: order-test invocation failed"
+  [[ $out == $'2\n5\n9' ]] || die "self-test: expected ascending order '2 5 9' (got: $out)"
+
+  # --json output is sorted ascending too.
+  out=$(PATH="$bin:$PATH" "$script_path" --label order-test --json) || die "self-test: order-test --json failed"
+  printf '%s' "$out" | jq -e '[.[].number] == [2,5,9]' >/dev/null ||
+    die "self-test: expected --json sorted ascending [2,5,9] (got: $out)"
 
   printf 'agent-dispatchable-issues self-test passed\n'
 }
