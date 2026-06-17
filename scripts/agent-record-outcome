@@ -42,6 +42,18 @@ utc_now() {
   date -u '+%Y-%m-%dT%H:%M:%SZ'
 }
 
+# Reject a timestamp jq's fromdateiso8601 cannot parse. Downstream reports
+# (agent-weekly-digest, agent-outcome-dashboard) compute run durations with
+# fromdateiso8601, which only accepts the `YYYY-MM-DDTHH:MM:SSZ` form utc_now
+# emits; a date-only or otherwise off-format string passes a bare `length > 0`
+# check but later aborts the whole report. Validate at the source. (#7)
+validate_iso8601() {
+  local name="$1"
+  local value="$2"
+  [[ $value =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] ||
+    die "$name must be an ISO8601 UTC timestamp like 2026-06-17T08:00:00Z (got: $value)"
+}
+
 json_array_from_lines() {
   jq -Rsc 'split("\n") | map(select(length > 0))'
 }
@@ -450,6 +462,26 @@ EOF
   )
   printf '%s\n' "$json" | jq -e '(has("review") | not)' >/dev/null
 
+  # A non-ISO timestamp is rejected at the source (date-only string passes a
+  # bare length check but breaks fromdateiso8601 in the digest/dashboard). (#7)
+  local rc
+  set +e
+  PATH="$bin:$PATH" "$script_path" \
+    --issue 1 --status success --base-branch main --repo-dir "$repo" \
+    --started-at '2026-06-01' --finished-at '2026-06-01T00:01:00Z' \
+    --exit-code 0 --blocker '' --learning-candidates-file "$candidates" \
+    --output-dir "$out" --dry-run >/dev/null 2>&1
+  rc=$?
+  set -e
+  [[ $rc -ne 0 ]] || { echo "agent-record-outcome: self-test: expected a date-only --started-at to be rejected" >&2; exit 1; }
+  # A well-formed ISO8601 UTC timestamp is accepted.
+  PATH="$bin:$PATH" "$script_path" \
+    --issue 1 --status success --base-branch main --repo-dir "$repo" \
+    --started-at '2026-06-01T00:00:00Z' --finished-at '2026-06-01T00:01:00Z' \
+    --exit-code 0 --blocker '' --learning-candidates-file "$candidates" \
+    --output-dir "$out" --dry-run >/dev/null ||
+    { echo "agent-record-outcome: self-test: a valid ISO8601 timestamp must be accepted" >&2; exit 1; }
+
   printf 'agent-record-outcome self-test passed\n'
 }
 
@@ -588,6 +620,8 @@ command -v git >/dev/null 2>&1 || die "git not found"
 [[ -n $status ]] || die "--status is required"
 started_at="${started_at:-$(utc_now)}"
 finished_at="${finished_at:-$(utc_now)}"
+validate_iso8601 --started-at "$started_at"
+validate_iso8601 --finished-at "$finished_at"
 
 write_outcome "$issue" "$status" "$base_branch" "$repo_dir" "$started_at" \
   "$finished_at" "$exit_code" "$blocker" "$candidates_file" "$output_dir" "$dry_run" \

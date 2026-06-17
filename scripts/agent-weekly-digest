@@ -288,12 +288,16 @@ render_digest() {
   echo "| issue | status | duration |"
   echo "| --- | --- | --- |"
   if [[ $count -gt 0 ]]; then
+    # Guard fromdateiso8601 with try/catch: a single committed record with a
+    # non-ISO timestamp would otherwise raise "does not match format" and, under
+    # set -e, abort the whole digest. A bad record degrades to "—" instead. (#7)
     jq -rs '
       sort_by(.issue)
-      | .[] | (
-          ((.finished_at | fromdateiso8601) - (.started_at | fromdateiso8601)) as $secs
-          | "| #\(.issue) | \(.status) | \($secs)s |"
-        )
+      | .[]
+      | (try (.finished_at | fromdateiso8601) catch null) as $fin
+      | (try (.started_at | fromdateiso8601) catch null) as $sta
+      | (if $fin != null and $sta != null then "\($fin - $sta)s" else "—" end) as $dur
+      | "| #\(.issue) | \(.status) | \($dur) |"
     ' "$records_file"
   else
     echo "| (none) | | |"
@@ -476,6 +480,23 @@ EOF
   out=$(render_digest "$records" "$cand_dir" "2026-06-01T00:00:00Z")
   [[ $out != *"#200"* ]] || die "self-test: expected --since to exclude PR #200 (issue #50)"
   [[ $out == *"#301 MERGED"* ]] || die "self-test: expected --since to keep PR #301 (issue #101)"
+
+  # A record with a non-ISO (date-only) timestamp must NOT abort the digest:
+  # the Run durations row degrades to "—" instead. (#7)
+  local bad_dir="$tmp/bad-ts" bad_records="$tmp/bad.ndjson"
+  mkdir -p "$bad_dir"
+  jq -n '{
+    schema: "agent-outcome/v1", id: "2026-06-06T00:00:00Z-issue-106-success",
+    issue: 106, status: "success", exit_code: 0,
+    started_at: "2026-06-01", finished_at: "2026-06-01T00:01:00Z",
+    base_branch: "main", repo_dir: "/repo", head_branch: "main", head_sha: "eee555",
+    prs: [], learning_candidates: [], git_dirty: [], blocker: ""
+  }' >"$bad_dir/2026-06-06T00:00:00Z-issue-106-success.json"
+  read_records "$bad_dir" "" >"$bad_records"
+  out=$(render_digest "$bad_records" "$cand_dir" "") ||
+    die "self-test: a non-ISO timestamp must not abort the digest"
+  [[ $out == *"| #106 | success | — |"* ]] ||
+    die "self-test: expected em-dash duration for a non-ISO timestamp (got: $out)"
 
   printf 'agent-weekly-digest self-test passed\n'
 }

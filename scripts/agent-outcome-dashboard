@@ -111,13 +111,9 @@ render_dashboard() {
     jq -rs '
       .[]
       | (.session // null) as $s
-      | (
-          if (.finished_at | type == "string") and (.started_at | type == "string")
-          then (
-            ((.finished_at | fromdateiso8601) - (.started_at | fromdateiso8601))
-          )
-          else null end
-        ) as $dur
+      | (try (.finished_at | fromdateiso8601) catch null) as $fin
+      | (try (.started_at | fromdateiso8601) catch null) as $sta
+      | (if $fin != null and $sta != null then ($fin - $sta) else null end) as $dur
       | "| \(.started_at) "
         + "| #\(.issue) "
         + "| \(.status) "
@@ -145,8 +141,7 @@ render_dashboard() {
         total_cost: ([.[] | (.session.cost_usd // 0)] | add // 0),
         total_turns: ([.[] | (.session.turns // 0)] | add // 0),
         total_dur: ([.[]
-          | select((.started_at | type == "string") and (.finished_at | type == "string"))
-          | ((.finished_at | fromdateiso8601) - (.started_at | fromdateiso8601))] | add // 0)
+          | (try ((.finished_at | fromdateiso8601) - (.started_at | fromdateiso8601)) catch 0)] | add // 0)
       }
       | (if .cost_runs > 0 then (.total_cost / .cost_runs) else 0 end) as $avg_cost
       | "- Runs: \(.runs) (success \(.success), failure \(.failure), blocked \(.blocked))",
@@ -313,6 +308,26 @@ self_test() {
   out=$(render_dashboard "$erecords")
   [[ $out == *"# Agent Outcome Dashboard"* ]] || die "self-test: empty dir should still render header"
   [[ $out == *"Runs: 0"* ]] || die "self-test: empty dir should report 0 runs"
+
+  # A record with a non-ISO (date-only) timestamp must NOT abort the report:
+  # the duration degrades to "—" and totals still render. (#7)
+  local bad="$tmp/bad-ts"
+  mkdir -p "$bad"
+  jq -n '{
+    schema: "agent-outcome/v1", id: "2026-06-06T00:00:00Z-issue-106-success",
+    issue: 106, status: "success", exit_code: 0,
+    started_at: "2026-06-01", finished_at: "2026-06-01T00:01:00Z",
+    base_branch: "main", repo_dir: "/repo", head_branch: "main", head_sha: "eee555",
+    prs: [], learning_candidates: [], git_dirty: [], blocker: ""
+  }' >"$bad/2026-06-06T00:00:00Z-issue-106-success.json"
+  local brecords="$tmp/bad.ndjson"
+  read_records "$bad" | sort_records >"$brecords"
+  out=$(render_dashboard "$brecords") ||
+    die "self-test: a non-ISO timestamp must not abort the dashboard"
+  [[ $out == *"| #106 | success | — | — | — | — |"* ]] ||
+    die "self-test: expected em-dash duration for a non-ISO timestamp (got: $out)"
+  [[ $out == *"Total duration: 0s"* ]] ||
+    die "self-test: a non-ISO timestamp must contribute 0 to total duration (got: $out)"
 
   printf 'agent-outcome-dashboard self-test passed\n'
 }
