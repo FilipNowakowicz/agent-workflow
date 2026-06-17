@@ -2,7 +2,7 @@ schema: learning-candidate/v1
 id: 2026-06-16-nixos-mkif-leaf-submodule-undefined-text
 date: 2026-06-16
 expires: 2027-06-16
-status: open
+status: rejected
 
 route: promote-doc
 best_form: doc
@@ -15,3 +15,4 @@ proposed_upgrade: add a note to CLAUDE.md (or a shared module-authoring note) â€
 # dedupe_key: nix-modules:mkif-leaf-creates-empty-submodule
 # triggers: [system.activationScripts, lib.mkIf, submodule, required option]
 # targets: [CLAUDE.md, modules/nixos/profiles/observability/collectors.nix]
+curation_note: "not applicable to this provider repo: a NixOS module-system (lib.mkIf submodule leaf) gotcha; this repo carries no NixOS modules of its own."

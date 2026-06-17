@@ -2,7 +2,7 @@ schema: learning-candidate/v1
 id: 2026-06-14-merge-gate-must-run-from-trusted-base-and-bind-evidence
 date: 2026-06-14
 expires: 2026-12-14
-status: open
+status: superseded
 route: implement-fix
 best_form: test
 evidence: ["pr-#290 review (epic #284): agent-merge-gate resolved agent-route/agent-policy-eval/agent-review-evidence-check from the SAME checkout it was gating, so a PR editing those workflow scripts could weaken the classifier that decides the PR is low-risk, then --enable native auto-merge (CI-gated but risk-gate bypassed)", "same gate validated evidence schema + .result==approved but never checked evidence.pr against --pr; reviewer reproduced decision==auto using evidence for PR 999 on docs-only paths"]
@@ -13,3 +13,4 @@ dedupe_key: agent-gate:trusted-base-eval-and-evidence-pr-binding
 triggers: ["agent-merge-gate", "git archive base ref", "auto-merge gate", "reviewer evidence binding", "self-gating"]
 targets: [".agents/scripts/agent-merge-gate", "scripts/agent-review-pr.sh"]
 risk: "low — fix already in #290; promoting a redundant check could duplicate the self-test coverage already added"
+curation_note: "already implemented: scripts/agent-merge-gate resolves a trusted base (AGENT_GATE_TRUSTED_ROOT or the committed tree at the base ref) and binds approved evidence to the PR's own number."

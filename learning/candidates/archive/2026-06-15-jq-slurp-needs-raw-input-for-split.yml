@@ -2,7 +2,7 @@ schema: learning-candidate/v1
 id: 2026-06-15-jq-slurp-needs-raw-input-for-split
 date: 2026-06-15
 expires: 2026-09-15
-status: open
+status: superseded
 
 route: implement-fix
 best_form: none
@@ -15,3 +15,4 @@ type: workflow-gotcha
 dedupe_key: jq:slurp-raw-input-for-split-on-jsonlines
 triggers: [scripts/agent-run-issue.sh, jq -rs, jq -cs, "split(\"\\n\")", stream-json]
 targets: [scripts/agent-run-issue.sh]
+curation_note: "already implemented: orchestration/agent-run-issue.sh's JSON-lines parsing already uses jq -rRs/-cRs (raw input) where it slurps a log."

@@ -2,7 +2,7 @@ schema: learning-candidate/v1
 id: 2026-06-13-agent-run-issue-post-pr-timeout
 date: 2026-06-13
 expires: 2026-09-11
-status: open
+status: superseded
 route: implement-fix
 best_form: test
 evidence: [issue-#257 outcome .agents/state/outcomes/2026-06-13T11:18:11Z-issue-257-failure.json recorded exit_code 124 after PR #271 was already opened; session log .agents/state/sessions/2026-06-13T11:03:08Z-issue-257.log shows commit 78a82d6 pushed and gh pr create returned https://github.com/FilipNowakowicz/nixos-config/pull/271 before timeout during learning capture]
@@ -13,3 +13,4 @@ dedupe_key: agent-run-issue:post-pr-timeout-after-successful-pr-create
 triggers: [scripts/agent-run-issue.sh, scripts/agent-session.sh, capture-learning-candidate, AGENT_INNER_TIMEOUT_SECONDS]
 targets: [scripts/agent-run-issue.sh, .agents/state/outcomes, .agents/skills/capture-learning-candidate]
 risk: misclassified failures can cause humans or dispatch automation to treat a successfully opened PR as failed work.
+curation_note: "already implemented: orchestration/agent-run-issue.sh's has_clean_pr_after_timeout() treats a timeout after a clean linked PR as success with a finalization-timeout blocker note."

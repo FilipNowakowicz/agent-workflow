@@ -131,3 +131,29 @@ SHA stops being an ancestor of `main`, so a PR reference is what
 landed, record the landing PR in the `fix-pr` field: liveness only treats a
 **merged `fix-pr`** as resolution, so a PR cited in evidence purely as
 related/contrasting context never false-positives the candidate as done.
+
+## Candidate Status In This Provider Repo
+
+`candidates/` was seeded from `nixos-config`'s active queue as representative
+pipeline data (issue #29). Most of those candidates described code paths that
+either don't exist in this repo (NixOS modules, host-specific tests — see
+`status: rejected`, `candidates/archive/`) or were already fixed in the code
+this repo was extracted with (`status: superseded`, also archived, with a
+`curation_note` pointing at the file/function that already addresses it).
+
+Two candidates are genuinely **open, active backlog for this repo's own
+code**:
+
+- `2026-06-15-agent-ready-label-without-readiness-check-wastes-dispatch` —
+  `agent-dispatchable-issues` has no readiness precheck before a session is
+  dispatched.
+- `2026-06-15-uncommitted-work-destroyed-by-next-issue-reset` —
+  `orchestration/agent-run-issue.sh`'s `sync_base()` runs `git reset --hard`
+  with no guard against discarding a prior session's uncommitted work.
+
+`examples/captured-candidate/` keeps one strong, real capture
+(`2026-06-15-zsh-errexit-doesnt-abort-on-eval-command-not-found`) purely as a
+public demonstration of what a well-formed candidate looks like — it is not
+an actionable item for this repo (its target, `CLAUDE.md`, and the
+secret-generation workflow it describes belong to nixos-config). Treat
+`examples/` as reference material, not as part of the open queue.

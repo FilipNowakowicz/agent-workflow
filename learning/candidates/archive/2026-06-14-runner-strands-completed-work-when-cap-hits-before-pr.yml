@@ -2,7 +2,7 @@ schema: learning-candidate/v1
 id: 2026-06-14-runner-strands-completed-work-when-cap-hits-before-pr
 date: 2026-06-14
 expires: 2026-12-14
-status: open
+status: superseded
 
 route: implement-fix
 best_form: test
@@ -16,3 +16,4 @@ dedupe_key: agent-run-issue:strands-pushed-work-when-cap-or-timeout-precedes-pr-
 triggers: [scripts/agent-run-issue.sh, AGENT_MAX_TURNS, gh pr create, .agents/state/outcomes, draft PR]
 targets: [scripts/agent-run-issue.sh]
 risk: "low -- a draft PR for incomplete work is cheap and reviewable; the only downside is occasional draft PRs for genuinely abandoned branches, which a human can close"
+curation_note: "already implemented: orchestration/agent-run-issue.sh's recover_stranded_branch_pr() auto-opens a draft PR for a pushed-but-PR-less branch (issue #319)."
