@@ -53,6 +53,8 @@ jobs:
           bash learning/scripts/scaffold-promotion-check.sh --self-test
       - name: Repo-map smoke test
         run: bash repo-map/scripts/validate.sh
+      - name: Installer self-test
+        run: bash install.sh --self-test
 
   nix-flake-check:
     runs-on: ubuntu-latest
@@ -63,3 +65,7 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
       - run: nix flake check
+      - name: Flake paths output smoke test
+        run: bash check-flake-outputs.sh
+      - name: Flake paths checker self-test
+        run: bash check-flake-outputs.sh --self-test
