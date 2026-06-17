@@ -2,6 +2,10 @@
 # Record a compact, machine-readable outcome for one agent issue-run session.
 set -euo pipefail
 
+# Centralized engine layout + consumer-config seam (AGENT_* path defaults).
+# shellcheck source-path=SCRIPTDIR source=lib/agent-env.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/agent-env.sh"
+
 usage() {
   cat <<'EOF'
 Usage: agent-record-outcome --issue <n> --status <success|failure|blocked> [options]
@@ -94,8 +98,8 @@ collect_learning_candidates() {
     return 0
   fi
 
-  [[ -d .agents/learning/candidates ]] || return 0
-  find .agents/learning/candidates -maxdepth 1 -type f \
+  [[ -d $AGENT_CANDIDATES_DIR ]] || return 0
+  find "$AGENT_CANDIDATES_DIR" -maxdepth 1 -type f \
     ! -name '.gitkeep' -printf '%p\n' | sort
 }
 
@@ -471,7 +475,7 @@ session_cost_usd=""
 session_turns=""
 session_duration_ms=""
 session_id=""
-output_dir="${AGENT_OUTCOME_DIR:-.agents/state/outcomes}"
+output_dir="$AGENT_OUTCOME_DIR"
 dry_run=0
 tmp_pr_numbers=""
 trap '[[ -z ${tmp_pr_numbers:-} ]] || rm -f "$tmp_pr_numbers"' EXIT
