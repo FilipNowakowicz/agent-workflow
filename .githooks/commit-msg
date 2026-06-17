@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# commit-msg hook: this repo's commits never carry a Claude/Anthropic
+# co-author trailer. Enable with: git config core.hooksPath .githooks
+set -euo pipefail
+
+msg_file="$1"
+
+if grep -Eiq '^(co-authored-by:.*(claude|anthropic)|claude-session:)' "$msg_file"; then
+  echo "commit-msg: refusing a commit message with a Claude/Anthropic co-author trailer." >&2
+  echo "Remove the Co-Authored-By / Claude-Session line(s) and retry." >&2
+  exit 1
+fi

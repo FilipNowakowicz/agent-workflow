@@ -33,6 +33,18 @@ Prefer deterministic checks over model judgement. A model can recommend,
 summarize, or review evidence, but policy and merge authority must come from
 versioned repository code and maintainer decisions.
 
+## Git Hooks
+
+Commits in this repo must never carry a `Co-Authored-By: Claude` /
+`Claude-Session:` trailer. Enable the repo's `commit-msg` hook once per clone:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+Claude Code sessions are also guarded by `.claude/hooks/guard-bash.sh`, which
+denies a `git commit` before it runs if the message would include one.
+
 ## Local Validation
 
 Run the narrowest checks that prove your change. Examples:
