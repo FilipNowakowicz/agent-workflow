@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/FilipNowakowicz/nixos-config/.agents/schemas/outcome.schema.json",
+  "$id": "https://github.com/FilipNowakowicz/agent-workflow/schemas/outcome.schema.json",
   "title": "Agent issue-run outcome",
   "type": "object",
   "required": [
