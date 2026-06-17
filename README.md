@@ -11,6 +11,9 @@ and the provider/consumer extraction reasoning live in
 installed filesystem contract is documented in
 [`docs/provider-consumer-layout.md`](docs/provider-consumer-layout.md). CI and
 the local-equivalent commands are documented in [`docs/ci.md`](docs/ci.md).
+The self-hosted issue loop's architecture, prerequisites, trust boundary, and
+failure modes are documented in
+[`docs/gcp-issue-loop.md`](docs/gcp-issue-loop.md).
 
 Public-use basics are tracked in [`LICENSE`](LICENSE), [`SECURITY.md`](SECURITY.md),
 [`CONTRIBUTING.md`](CONTRIBUTING.md), and
