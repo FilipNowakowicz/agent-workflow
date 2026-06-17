@@ -9,7 +9,8 @@ The full vision and roadmap live in [`PLAN.md`](PLAN.md); the endgame analysis
 and the provider/consumer extraction reasoning live in
 [`docs/endgame-analysis.md`](docs/endgame-analysis.md). The provider-vs-
 installed filesystem contract is documented in
-[`docs/provider-consumer-layout.md`](docs/provider-consumer-layout.md).
+[`docs/provider-consumer-layout.md`](docs/provider-consumer-layout.md). CI and
+the local-equivalent commands are documented in [`docs/ci.md`](docs/ci.md).
 
 Public-use basics are tracked in [`LICENSE`](LICENSE), [`SECURITY.md`](SECURITY.md),
 [`CONTRIBUTING.md`](CONTRIBUTING.md), and
