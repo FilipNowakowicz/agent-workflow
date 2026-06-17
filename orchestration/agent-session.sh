@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Start the on-demand gcp-agent VM and wait until it is reachable over Tailscale.
+# Start an on-demand agent VM (GCE) and wait until it is reachable over SSH
+# (typically a Tailscale address).
 #
-# gcp-agent is normally powered off and powers itself back off when idle (see
-# the agent-idle-shutdown timer in hosts/gcp-agent/default.nix). This helper is
-# the "start" side of that lifecycle — the agent analog of validate.sh's
-# build-offload-focused ensure_builder, kept separate because its job is to open
-# an interactive/orchestration session rather than to offload a build.
+# The agent host is normally powered off and powers itself back off when idle.
+# This helper is the "start" side of that lifecycle: its job is to open an
+# interactive/orchestration session on the host (not to offload a build).
+# GCE/Tailscale specifics are knobs (see below); a consumer overrides them.
 #
 # Usage:
 #   scripts/agent-session.sh                 # start, wait, open interactive SSH
@@ -25,10 +25,10 @@
 #                                            # are collected even when the
 #                                            # remote issue run exits non-zero)
 #
-# Env knobs (defaults match lib/hosts.nix + infra/variables.tf):
-#   AGENT_NAME (gcp-agent)  AGENT_ZONE (europe-west2-a)
-#   AGENT_FQDN (gcp-agent.tail90fc7a.ts.net)  SSH_USER (user)
-#   REMOTE_AGENT_REPO_DIR (nix)  relative or absolute repo path on gcp-agent
+# Env knobs (a consumer sets these for its deployment):
+#   AGENT_NAME (agent)  AGENT_ZONE (europe-west2-a)
+#   AGENT_FQDN (defaults to AGENT_NAME)  SSH_USER (user)
+#   REMOTE_AGENT_REPO_DIR (repo)  relative or absolute repo path on the host
 #
 # Prerequisite: gcloud authenticated with the agent's project active
 #   (gcloud config set project <id>), and tailnet access as tag:workstation.
@@ -36,11 +36,13 @@
 #   `nix shell nixpkgs#google-cloud-sdk -c gcloud`.
 set -euo pipefail
 
-AGENT_NAME="${AGENT_NAME:-gcp-agent}"
+AGENT_NAME="${AGENT_NAME:-agent}"
 AGENT_ZONE="${AGENT_ZONE:-europe-west2-a}"
-AGENT_FQDN="${AGENT_FQDN:-gcp-agent.tail90fc7a.ts.net}"
+# No universal default host; derive from the instance name. A consumer sets
+# AGENT_FQDN to the reachable address (e.g. its tailnet name).
+AGENT_FQDN="${AGENT_FQDN:-$AGENT_NAME}"
 SSH_USER="${SSH_USER:-user}"
-REMOTE_AGENT_REPO_DIR="${REMOTE_AGENT_REPO_DIR:-nix}"
+REMOTE_AGENT_REPO_DIR="${REMOTE_AGENT_REPO_DIR:-repo}"
 
 wait_only=0
 preflight_only=0
@@ -140,7 +142,7 @@ preflight_issue_auth() {
   if ! ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
     "$SSH_USER@$AGENT_FQDN" \
     "gh auth status >/dev/null" 2>/dev/null; then
-    echo "agent-session: gh auth failed on $AGENT_NAME (check hosts/gcp-agent/secrets/gh-hosts.yaml)" >&2
+    echo "agent-session: gh auth failed on $AGENT_NAME (check the host's gh credentials)" >&2
     exit 1
   fi
 
@@ -168,7 +170,7 @@ EOF
   if ! ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
     "$SSH_USER@$AGENT_FQDN" "$remote_probe"; then
     echo "agent-session: claude auth/preflight failed on $AGENT_NAME" >&2
-    echo "agent-session: refresh hosts/gcp-agent/secrets/claude-credentials.enc from a working login and activate/reprovision the host" >&2
+    echo "agent-session: refresh the host's claude credentials from a working login and reprovision/reactivate the host" >&2
     exit 1
   fi
 

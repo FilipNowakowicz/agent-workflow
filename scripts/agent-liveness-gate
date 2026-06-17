@@ -73,7 +73,7 @@ check_gh_auth() {
     return 1
   fi
   if ! gh auth status >/dev/null 2>&1; then
-    printf 'agent-liveness-gate: gh is not authenticated (run "gh auth login", or provision the scoped PAT - hosts/gcp-agent/CLAUDE.md)\n' >&2
+    printf 'agent-liveness-gate: gh is not authenticated (run "gh auth login", or provision a scoped GitHub token)\n' >&2
     return 1
   fi
   printf 'agent-liveness-gate: gh auth OK\n'

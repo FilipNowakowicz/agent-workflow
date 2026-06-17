@@ -46,7 +46,10 @@ layout, so a consumer that adopts the convention needs no config file.
 | `agent-routing-check` | **done** — aligned its hardcoded required path-class / profile id lists to the generic routing classes (dropped `nix-modules`/`nix-engineer`, renamed `agent-workflow-scripts`→`agent-workflow`, `doc-editor`→`doc-agent`, etc.); self-test passes |
 | `orchestration/agent-review-pr` | **done** — added a layout-aware `engine_dir()` resolver (honors `AGENT_ENGINE_DIR`, else detects control-plane dir by presence of `agent-merge-gate` across the standalone `scripts/` and consumer `.agents/scripts/` layouts); prompt + fixture genericized. Was the only orchestration script failing standalone |
 | `orchestration/agent-run-issue` | **done** — prompt routes validation through `AGENT_VERIFY_CMD` (was `nix-verification-loop` / `scripts/validate.sh` tiers); generic defaults (`AGENT_REPO_DIR` `$HOME/nix`→`$HOME/repo`, `REPO_URL` no nixos default + clone guard); genericized error messages. (`.agents/scripts/agent-*` sibling calls run inside the *target* repo, which is the correct `.agents/` consumer convention.) self-test + shellcheck clean |
-| `orchestration/agent-session` | pending — gcp-agent/tailnet defaults (`AGENT_FQDN`, `hosts/gcp-agent/secrets/...` error text); parameterized but nixos-flavored, genericize defaults/messages |
+| `orchestration/agent-session` | **done** — genericized the nixos-leaky defaults (`AGENT_NAME` `gcp-agent`→`agent`, `AGENT_FQDN` specific tailnet→derives from `AGENT_NAME`, `REMOTE_AGENT_REPO_DIR` `nix`→`repo`), error messages, and header docs. GCE/Tailscale remain as overridable knobs (deployment-specific by nature) |
+| `agent-liveness-gate` (follow-up) | genericized a stray `hosts/gcp-agent/CLAUDE.md` reference in a `gh auth` error |
+
+**Executable nixos-coupling sweep across `scripts/` + `orchestration/` is clean.** All 18 scripts pass `--self-test` standalone. Remaining nixos strings are confined to self-test *fixture data* (example `path_classes`/commands inside test JSON), which is illustrative, not functional coupling.
 | portable `skills/*` | pending — genericize prose references (`nix-verification-loop`, `lib/invariants.nix`) |
 
 Each migration sources the lib, replaces hardcoded paths with the `AGENT_*`
