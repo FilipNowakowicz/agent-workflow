@@ -8,7 +8,8 @@
     { self }:
     {
       # Source trees exposed for consumption as a flake input by a downstream
-      # repo (e.g. the nixos-config flake). The consumer pins this repo:
+      # repo. This is a provider layout: these paths are source directories,
+      # not an installer. A consumer pins this repo:
       #
       #   inputs.agent-workflow.url = "github:FilipNowakowicz/agent-workflow";
       #

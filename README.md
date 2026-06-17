@@ -7,7 +7,9 @@ telemetry* and *bounded by deterministic policy*.
 
 The full vision and roadmap live in [`PLAN.md`](PLAN.md); the endgame analysis
 and the provider/consumer extraction reasoning live in
-[`docs/endgame-analysis.md`](docs/endgame-analysis.md).
+[`docs/endgame-analysis.md`](docs/endgame-analysis.md). The provider-vs-
+installed filesystem contract is documented in
+[`docs/provider-consumer-layout.md`](docs/provider-consumer-layout.md).
 
 Public-use basics are tracked in [`LICENSE`](LICENSE), [`SECURITY.md`](SECURITY.md),
 [`CONTRIBUTING.md`](CONTRIBUTING.md), and
@@ -35,6 +37,12 @@ Because it's a snapshot, the carried-over skills and scripts still contain
 
 ## Layout
 
+This repo is the **provider** layout: the top-level directories are the source
+trees exported by the flake. A downstream repo installs those trees under its
+own `.agents/` directory, plus root `scripts/agent-*.sh` operator entrypoints.
+When docs or skills say `.agents/...`, they are describing that installed
+consumer layout. When validating this repo directly, use the provider paths.
+
 | Path             | What it is                                                            | Maps back to (consumer)        |
 | ---------------- | -------------------------------------------------------------------- | ------------------------------ |
 | `skills/`        | Portable workflow skills (issue-driven-dev, issue-tdd, learning…)     | `.agents/skills/`              |
@@ -44,6 +52,18 @@ Because it's a snapshot, the carried-over skills and scripts still contain
 | `learning/`      | Learning-candidate capture/review/promotion tooling + examples       | `.agents/learning/`            |
 | `repo-map/`      | Repo-intelligence index/query helpers                               | `.agents/repo-map/`            |
 | `state/`         | Runtime telemetry (gitignored; structure only)                      | `.agents/state/`               |
+
+Examples:
+
+```sh
+# Provider checkout
+bash scripts/agent-record-outcome --self-test
+bash learning/scripts/validate-candidates.sh learning
+
+# Installed consumer checkout
+bash .agents/scripts/agent-record-outcome --self-test
+bash .agents/learning/scripts/validate-candidates.sh .agents/learning
+```
 
 Nix-specific skills (`nix-verification-loop`, `nix-review-ledger-batch`)
 deliberately stay in `nixos-config` — they're welded to that repo's
