@@ -26,15 +26,11 @@ for f in scripts/agent-*; do
 done
 bash orchestration/agent-session.sh --self-test
 bash orchestration/agent-run-issue.sh --self-test
+bash orchestration/agent-review-pr.sh --self-test
 bash learning/scripts/validate-candidates.sh learning
 bash learning/scripts/scaffold-promotion-check.sh --self-test
 bash repo-map/scripts/validate.sh
 ```
-
-`orchestration/agent-review-pr.sh --self-test` is intentionally not run in
-CI yet: it still assumes the installed `.agents/` consumer layout rather than
-this provider repo's own layout (tracked separately as the GCP-loop
-generalization work).
 
 Flake check:
 

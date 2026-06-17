@@ -40,14 +40,12 @@ jobs:
             echo "== $f --self-test =="
             bash "$f" --self-test
           done
-      # orchestration/agent-review-pr.sh is intentionally excluded: it still
-      # assumes the installed .agents/ consumer layout (issue #25) and fails
-      # --self-test in this provider checkout.
       - name: Orchestration entrypoint self-tests
         run: |
           set -euo pipefail
           bash orchestration/agent-session.sh --self-test
           bash orchestration/agent-run-issue.sh --self-test
+          bash orchestration/agent-review-pr.sh --self-test
       - name: Learning pipeline checks
         run: |
           set -euo pipefail

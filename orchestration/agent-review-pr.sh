@@ -3,9 +3,11 @@
 #
 # Reviews a PR's diff against its linked issue and emits a structured decision
 # as a reviewer-evidence JSON file (schema agent-reviewer-evidence/v1, #227),
-# then hands that evidence to .agents/scripts/agent-merge-gate, which applies
-# the risk gate: low-risk + approved PRs can have GitHub native, CI-gated
-# auto-merge enabled, while everything else is left for a human.
+# then hands that evidence to agent-merge-gate (control-plane script;
+# scripts/agent-merge-gate in this provider checkout, .agents/scripts/
+# agent-merge-gate in an installed consumer repo), which applies the risk
+# gate: low-risk + approved PRs can have GitHub native, CI-gated auto-merge
+# enabled, while everything else is left for a human.
 #
 # Two modes:
 #   review (default)  Scaffold evidence from the issue's acceptance criteria,
@@ -40,7 +42,9 @@ Options:
   --issue <n>          Linked issue number. Default: discovered from the PR's
                        closing references / body.
   --evidence <path>    review mode: output path for the evidence JSON
-                       (default: .agents/state/review/issue-<i>-pr-<n>.json).
+                       (default: state/review/issue-<i>-pr-<n>.json, or
+                       .agents/state/review/... in an installed consumer
+                       repo that has a top-level .agents/ directory).
                        --decision-only: the pre-filled evidence file to use.
   --decision-only      Skip the reviewer model; use an existing --evidence file
                        and run the merge gate only.
@@ -72,12 +76,25 @@ repo_root() {
   CDPATH='' cd -- "$(script_dir)/.." && pwd
 }
 
+# A consumer repo installs orchestration entrypoints at repo-root
+# scripts/agent-*.sh and the rest of the control plane under .agents/
+# (see docs/provider-consumer-layout.md), while this provider repo keeps
+# orchestration/, scripts/, and state/ as plain siblings at the repo root.
+# The presence of a top-level .agents/ directory distinguishes the two.
+control_plane_prefix() {
+  [[ -d "$(repo_root)/.agents" ]] && printf '.agents/\n' || printf '\n'
+}
+
 review_stage_bin() {
-  printf '%s/.agents/scripts/agent-review-stage\n' "$(repo_root)"
+  printf '%s/%sscripts/agent-review-stage\n' "$(repo_root)" "$(control_plane_prefix)"
 }
 
 merge_gate_bin() {
-  printf '%s/.agents/scripts/agent-merge-gate\n' "$(repo_root)"
+  printf '%s/%sscripts/agent-merge-gate\n' "$(repo_root)" "$(control_plane_prefix)"
+}
+
+review_state_dir() {
+  printf '%sstate/review\n' "$(control_plane_prefix)"
 }
 
 # Best-effort discovery of the issue a PR closes: prefer GitHub's structured
@@ -95,7 +112,7 @@ discover_linked_issue() {
 }
 
 build_review_prompt() {
-  local pr="$1" issue="$2" evidence="$3"
+  local pr="$1" issue="$2" evidence="$3" stage_bin="$4"
   cat <<EOF
 You are the reviewer stage of an autonomous issue-to-PR loop. Review pull
 request #${pr} against its linked issue #${issue} and emit a structured
@@ -117,7 +134,7 @@ Steps:
    - validation_commands[]: the checks the PR ran and their results.
    - residual_risk: the honest residual risk if this merged.
 5. Validate your file with:
-   bash .agents/scripts/agent-review-stage check ${evidence} --issue ${issue}
+   ${stage_bin} check ${evidence} --issue ${issue}
    Fix it until that check passes.
 
 Merge authority is decided downstream by agent-merge-gate; your only job is an
@@ -234,14 +251,14 @@ run() {
   stage="$(review_stage_bin)"
   [[ -x $stage ]] || die "agent-review-stage not found or not executable: $stage"
 
-  evidence="${evidence:-.agents/state/review/issue-${issue}-pr-${pr}.json}"
+  evidence="${evidence:-$(review_state_dir)/issue-${issue}-pr-${pr}.json}"
   mkdir -p "$(dirname "$evidence")"
   "$stage" init --issue "$issue" --pr "$pr" --out "$evidence" >/dev/null ||
     die "failed to scaffold reviewer evidence for issue #$issue / PR #$pr"
   echo "agent-review-pr: scaffolded evidence at $evidence" >&2
 
   local prompt
-  prompt=$(build_review_prompt "$pr" "$issue" "$evidence")
+  prompt=$(build_review_prompt "$pr" "$issue" "$evidence" "bash $stage")
   local -a claude_args=(-p "$prompt" --output-format stream-json --verbose)
   [[ -n $AGENT_REVIEW_MODEL ]] && claude_args+=(--model "$AGENT_REVIEW_MODEL")
   echo "agent-review-pr: running reviewer session for PR #$pr ..." >&2
