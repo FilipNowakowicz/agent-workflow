@@ -17,6 +17,65 @@ Public-use basics are tracked in [`LICENSE`](LICENSE), [`SECURITY.md`](SECURITY.
 development space; those files define the intended public contract, not a claim
 that the loop is turnkey for arbitrary repositories yet.
 
+## What this gives you
+
+- **Issue-shaped work intake**: skills and readiness checks for turning rough
+  goals into scoped GitHub issues with acceptance criteria and validation.
+- **A self-hosted issue loop**: orchestration scripts for running one issue per
+  agent session, collecting structured outcomes, and recovering useful PRs.
+- **Evidence-gated review**: reviewer-evidence schemas and checks that bind a
+  recommendation to issue criteria, validation commands, and residual risk.
+- **Deterministic policy hooks**: routing, policy evaluation, liveness checks,
+  merge gates, and outcome dashboards that keep authority out of model prose.
+- **A learning pipeline**: candidate capture/review/promotion tooling for
+  turning repeated failures into repo-side checks, docs, hooks, or skills.
+
+## What to use first
+
+If you are exploring the repo directly, start with the source trees:
+
+1. Read [`docs/provider-consumer-layout.md`](docs/provider-consumer-layout.md)
+   to understand provider paths versus installed `.agents/` paths.
+2. Inspect `skills/issue-tdd/SKILL.md` and
+   `skills/issue-driven-development/SKILL.md` for the issue-first workflow.
+3. Run small local checks such as:
+
+   ```sh
+   bash scripts/agent-issue-readiness --self-test
+   bash scripts/agent-record-outcome --self-test
+   bash learning/scripts/validate-candidates.sh learning
+   ```
+
+If you are thinking about consuming this from another repo, treat `flake.nix`
+as source-path export only for now. Installer/module outputs are still planned.
+
+## Components
+
+- **Skills** (`skills/`): agent-facing workflows for issue design,
+  implementation, repo-map lookup, and learning review.
+- **Control plane** (`scripts/`): deterministic checks for readiness, routing,
+  evidence, outcomes, liveness, dispatch, and merge gating.
+- **Orchestration** (`orchestration/`): operator entrypoints for the
+  self-hosted GCP-style issue loop and reviewer handoff.
+- **Learning** (`learning/`): candidate schema, indexing, liveness checks,
+  review helpers, and promotion scaffolding.
+- **Schemas** (`schemas/`): JSON contracts for outcome records and reviewer
+  evidence.
+- **Repo map** (`repo-map/`): lightweight indexing and query helpers for
+  finding likely files before broad exploration.
+
+## Maturity and sharp edges
+
+This is real dogfood from a NixOS/GCP agent loop, extracted into a reusable
+provider repo. It is not yet a turnkey product. In particular:
+
+- some examples still reflect the original `nixos-config` consumer;
+- the installed `.agents/` layout is documented, but the installer contract is
+  not finished;
+- CI and branch protection are not yet the final public gate;
+- live model calls, GCP hosts, credentials, and downstream validation commands
+  remain operator-local concerns.
+
 ## Status: v2 development space (seeded snapshot)
 
 This repo was seeded from the working agent loop in the personal `nixos-config`
