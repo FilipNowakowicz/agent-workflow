@@ -141,15 +141,11 @@ either don't exist in this repo (NixOS modules, host-specific tests — see
 this repo was extracted with (`status: superseded`, also archived, with a
 `curation_note` pointing at the file/function that already addresses it).
 
-Two candidates are genuinely **open, active backlog for this repo's own
-code**:
-
-- `2026-06-15-agent-ready-label-without-readiness-check-wastes-dispatch` —
-  `agent-dispatchable-issues` has no readiness precheck before a session is
-  dispatched.
-- `2026-06-15-uncommitted-work-destroyed-by-next-issue-reset` —
-  `orchestration/agent-run-issue.sh`'s `sync_base()` runs `git reset --hard`
-  with no guard against discarding a prior session's uncommitted work.
+Two candidates were genuinely open, active backlog for this repo's own code —
+`agent-dispatchable-issues` dispatching a labeled-but-unready issue, and
+`sync_base()`'s unguarded `git reset --hard` destroying a prior session's
+uncommitted work — and both are now `status: promoted` and archived
+(`fix-pr: 42`).
 
 `examples/captured-candidate/` keeps one strong, real capture
 (`2026-06-15-zsh-errexit-doesnt-abort-on-eval-command-not-found`) purely as a
