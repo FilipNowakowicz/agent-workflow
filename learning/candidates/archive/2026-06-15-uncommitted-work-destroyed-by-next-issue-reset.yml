@@ -2,7 +2,7 @@ schema: learning-candidate/v1
 id: 2026-06-15-uncommitted-work-destroyed-by-next-issue-reset
 date: 2026-06-15
 expires: 2026-12-15
-status: open
+status: promoted
 
 route: implement-fix
 best_form: test
@@ -16,3 +16,4 @@ dedupe_key: agent-run-issue:uncommitted-dirty-tree-destroyed-by-next-issue-reset
 triggers: [scripts/agent-run-issue.sh, AGENT_INNER_TIMEOUT_SECONDS, "git reset --hard origin/main", multi-issue --issues batch]
 targets: [scripts/agent-run-issue.sh]
 risk: high if unfixed -- any multi-issue dispatch where an earlier issue times out mid-edit loses that work entirely
+fix-pr: 42

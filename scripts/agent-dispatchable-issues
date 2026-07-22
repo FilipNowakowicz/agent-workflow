@@ -8,26 +8,49 @@
 # "agent:blocked" are excluded even if "agent:ready" is also present, since a
 # maintainer may add either label to an in-flight issue without remembering to
 # remove "agent:ready".
+#
+# A label alone does not mean an issue is actually ready for an agent to pick
+# up: an issue can carry "agent:ready" but lack the sections an implementation
+# agent needs (problem, acceptance criteria, non-goals, validation,
+# risk/rollback). Dispatching one of those still burns a real session slot —
+# a VM boot + preflight — for a guaranteed-blocked, 0-turn outcome (dogfood
+# incident 2026-06-15, issues #320/#321). So by default this tool also runs
+# the same readiness lint scripts/agent-run-issue.sh applies internally
+# (AGENT_DISPATCHABLE_READINESS, default scripts/agent-issue-readiness) on
+# each label-eligible issue and drops any that fail it, so a maintainer or
+# script consuming this list's output never dispatches a session doomed to
+# bounce. Pass --skip-readiness for the old label-only behavior.
 set -euo pipefail
+
+AGENT_DISPATCHABLE_READINESS="${AGENT_DISPATCHABLE_READINESS:-.agents/scripts/agent-issue-readiness}"
 
 usage() {
   cat <<'EOF'
-Usage: agent-dispatchable-issues [--label <name>] [--json]
+Usage: agent-dispatchable-issues [--label <name>] [--json] [--skip-readiness]
        agent-dispatchable-issues --self-test
 
 List open GitHub issues eligible for automated dispatch via
 scripts/agent-run-issue.sh --label <name>.
 
 Options:
-  --label <name>  Ready label to query (default: agent:ready).
-  --json          Emit a JSON array of {number,title,labels} for eligible
-                   issues instead of one issue number per line.
-  --self-test     Run a deterministic self-test (mocked gh) and exit.
-  -h, --help      Show this help.
+  --label <name>     Ready label to query (default: agent:ready).
+  --json             Emit a JSON array of {number,title,labels} for eligible
+                      issues instead of one issue number per line.
+  --skip-readiness   Skip the readiness lint and list all label-eligible
+                      issues, even ones missing required sections. Use only
+                      when AGENT_DISPATCHABLE_READINESS is unavailable or you
+                      deliberately want the raw label-only queue.
+  --self-test        Run a deterministic self-test (mocked gh/readiness) and
+                      exit.
+  -h, --help         Show this help.
+
+Env knobs:
+  AGENT_DISPATCHABLE_READINESS  Readiness check command (default:
+                                 .agents/scripts/agent-issue-readiness).
 
 Output (text mode): one issue number per line, ascending, for issues that
-carry the ready label and do NOT also carry "agent:not-ready" or
-"agent:blocked".
+carry the ready label, do NOT also carry "agent:not-ready" or
+"agent:blocked", and (unless --skip-readiness) pass the readiness lint.
 EOF
 }
 
@@ -45,6 +68,24 @@ filter_eligible() {
   jq -c '[.[] | select(
     (.labels | map(.name) | any(. == "agent:not-ready" or . == "agent:blocked")) | not
   )] | sort_by(.number)'
+}
+
+# Narrow a JSON array of {number,...} issues down to those that pass
+# AGENT_DISPATCHABLE_READINESS --issue <n>. Fails closed: an issue is dropped
+# unless the readiness command exits 0 for it, so a readiness command that is
+# missing, broken, or errors on a given issue never gets waved through as
+# "ready" by default.
+filter_ready() {
+  local input="$1"
+  local numbers n nums_json
+  local -a ready_numbers=()
+  numbers=$(printf '%s' "$input" | jq -r '.[].number')
+  for n in $numbers; do
+    "$AGENT_DISPATCHABLE_READINESS" --issue "$n" >/dev/null 2>&1 && ready_numbers+=("$n")
+  done
+  nums_json=$(printf '%s\n' "${ready_numbers[@]+"${ready_numbers[@]}"}" | jq -R 'select(length > 0) | tonumber' | jq -s -c '.')
+  printf '%s' "$input" | jq -c --argjson nums "$nums_json" \
+    '[.[] | select(.number as $n | $nums | index($n) != null)]'
 }
 
 self_test() {
@@ -90,10 +131,44 @@ JSON
   exit 0
 fi
 
+if [[ $1 == issue && $2 == list && $* == *"--label readiness-test"* ]]; then
+  cat <<'JSON'
+[
+  {"number":10,"title":"Labeled ready, actually ready","labels":[{"name":"readiness-test"}]},
+  {"number":11,"title":"Labeled ready, missing required sections","labels":[{"name":"readiness-test"}]}
+]
+JSON
+  exit 0
+fi
+
 printf 'unexpected gh invocation: %s\n' "$*" >&2
 exit 1
 EOF
   chmod +x "$bin/gh"
+
+  # Readiness stub that marks every issue ready, so pre-existing assertions
+  # below (about label-based eligibility only) are unaffected by the
+  # readiness lint now running by default.
+  cat >"$bin/readiness-always" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+  chmod +x "$bin/readiness-always"
+
+  # Readiness stub that distinguishes #10 (ready) from #11 (not ready), for
+  # the readiness-filtering tests below.
+  cat >"$bin/readiness-selective" <<'EOF'
+#!/usr/bin/env bash
+[[ ${1:-} == --issue ]] || { echo "unexpected args: $*" >&2; exit 2; }
+case "$2" in
+10) exit 0 ;;
+11) echo "agent-issue-readiness: NOT READY - missing sections" >&2; exit 1 ;;
+*) echo "unexpected issue: $2" >&2; exit 2 ;;
+esac
+EOF
+  chmod +x "$bin/readiness-selective"
+
+  export AGENT_DISPATCHABLE_READINESS="$bin/readiness-always"
 
   local script_path
   script_path="$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
@@ -127,11 +202,29 @@ EOF
   printf '%s' "$out" | jq -e '[.[].number] == [2,5,9]' >/dev/null ||
     die "self-test: expected --json sorted ascending [2,5,9] (got: $out)"
 
+  # By default, the readiness lint drops a label-eligible issue that is not
+  # actually ready (#320/#321 dogfood incident): only #10 passes it.
+  out=$(PATH="$bin:$PATH" AGENT_DISPATCHABLE_READINESS="$bin/readiness-selective" "$script_path" --label readiness-test) ||
+    die "self-test: readiness-filtered invocation failed"
+  [[ $out == "10" ]] || die "self-test: expected only issue 10 to pass the readiness lint (got: $out)"
+
+  # --skip-readiness restores the old label-only behavior, including an issue
+  # that would fail the readiness lint.
+  out=$(PATH="$bin:$PATH" AGENT_DISPATCHABLE_READINESS="$bin/readiness-selective" "$script_path" --label readiness-test --skip-readiness) ||
+    die "self-test: --skip-readiness invocation failed"
+  [[ $out == $'10\n11' ]] || die "self-test: expected --skip-readiness to list both 10 and 11 (got: $out)"
+
+  # A missing/misconfigured readiness command is a hard, loud failure, not a
+  # silently empty (or silently all-ready) list.
+  if PATH="$bin:$PATH" AGENT_DISPATCHABLE_READINESS="$bin/no-such-readiness-checker" "$script_path" --label readiness-test >/dev/null 2>&1; then
+    die "self-test: expected a missing readiness checker to fail loudly"
+  fi
+
   printf 'agent-dispatchable-issues self-test passed\n'
 }
 
 main() {
-  local ready_label="agent:ready" json=0
+  local ready_label="agent:ready" json=0 check_readiness=1
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -141,6 +234,10 @@ main() {
       ;;
     --json)
       json=1
+      shift
+      ;;
+    --skip-readiness)
+      check_readiness=0
       shift
       ;;
     --self-test)
@@ -159,11 +256,19 @@ main() {
 
   command -v gh >/dev/null 2>&1 || die "gh not found"
   command -v jq >/dev/null 2>&1 || die "jq not found"
+  if [[ $check_readiness == 1 ]]; then
+    [[ -x $AGENT_DISPATCHABLE_READINESS ]] || command -v "$AGENT_DISPATCHABLE_READINESS" >/dev/null 2>&1 ||
+      die "readiness check '$AGENT_DISPATCHABLE_READINESS' not found or not executable (pass --skip-readiness to list label-eligible issues without the readiness lint)"
+  fi
 
   local raw eligible
   raw=$(gh issue list --state open --label "$ready_label" --json number,title,labels) ||
     die "gh issue list --label $ready_label failed"
   eligible=$(printf '%s' "$raw" | filter_eligible)
+
+  if [[ $check_readiness == 1 ]]; then
+    eligible=$(filter_ready "$eligible")
+  fi
 
   if [[ $json == 1 ]]; then
     printf '%s\n' "$eligible"
