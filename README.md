@@ -64,7 +64,7 @@ yet.
 - **Skills** (`skills/`): agent-facing workflows for issue design,
   implementation, repo-map lookup, and learning review.
 - **Control plane** (`scripts/`): deterministic checks for readiness, routing,
-  evidence, outcomes, liveness, dispatch, and merge gating.
+  evidence, outcomes, liveness, dispatch, merge gating, and freeze/quarantine.
 - **Orchestration** (`orchestration/`): operator entrypoints for the
   self-hosted GCP-style issue loop and reviewer handoff.
 - **Learning** (`learning/`): candidate schema, indexing, liveness checks,
@@ -73,6 +73,9 @@ yet.
   evidence.
 - **Repo map** (`repo-map/`): lightweight indexing and query helpers for
   finding likely files before broad exploration.
+- **Canaries** (`canaries/`): adversarial canary definitions and a
+  deterministic checker proving refusal, not just deterministic diffs, is
+  covered.
 - **Personal skills** (`personal-skills/`): general-purpose skills outside
   this repo's agent-workflow domain, kept here for convenience only. Not
   part of the flake's `paths` output or `install.sh` — see
@@ -83,12 +86,15 @@ yet.
 This is real dogfood from a NixOS/GCP agent loop, extracted into a reusable
 provider repo. It is not yet a turnkey product. In particular:
 
-- some examples still reflect the original `nixos-config` consumer;
-- the installed `.agents/` layout is documented, but the installer contract is
-  not finished;
-- CI and branch protection are not yet the final public gate;
+- some skills and self-tests still hardcode `nixos-config`-specific
+  conventions (e.g. `scripts/validate.sh`, `lib/invariants.nix`) as if they
+  were generic — genericizing engine vs. consumer-local config is still open;
 - live model calls, GCP hosts, credentials, and downstream validation commands
-  remain operator-local concerns.
+  remain operator-local concerns;
+- learned routing, branch-tournament benchmarks, and extracting this into a
+  separate agent-loop repo (PLAN.md's final priority items) are deliberately
+  not started yet — they need accumulated outcome telemetry this repo hasn't
+  generated through real dogfood runs.
 
 ## Status: v2 development space (seeded snapshot)
 

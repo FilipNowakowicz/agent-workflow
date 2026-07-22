@@ -15,6 +15,7 @@ truth for reusable workflow components:
 | `schemas/`        | JSON schemas                                 |
 | `learning/`       | Learning-candidate tooling and examples      |
 | `repo-map/`       | Repo-intelligence helpers                    |
+| `canaries/`       | Adversarial canary definitions                |
 | `state/`          | Runtime-state shape only, not committed data |
 
 Run provider-local checks from this checkout with provider paths, for example:
@@ -36,6 +37,7 @@ keeps root orchestration entrypoints where operators already run them:
 | `schemas/`        | `.agents/schemas/`                       |
 | `learning/`       | `.agents/learning/`                      |
 | `repo-map/`       | `.agents/repo-map/`                      |
+| `canaries/`       | `.agents/canaries/`                      |
 | `state/`          | `.agents/state/`                         |
 | `orchestration/`  | repo-root `scripts/agent-*.sh` wrappers  |
 

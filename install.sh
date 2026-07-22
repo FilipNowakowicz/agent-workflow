@@ -16,8 +16,8 @@ usage() {
 Usage: install.sh --target <consumer-repo-dir> [--source <agent-workflow-checkout>] [--force]
        install.sh --self-test
 
-Install this provider repo's skills/scripts/schemas/learning/repo-map trees
-under <target>/.agents/, and orchestration/*.sh as root-level
+Install this provider repo's skills/scripts/schemas/learning/repo-map/
+canaries trees under <target>/.agents/, and orchestration/*.sh as root-level
 <target>/scripts/agent-*.sh entrypoints.
 
 Options:
@@ -82,7 +82,8 @@ run_install() {
   install_tree "$source" "$target" schemas .agents/schemas "$force"
   install_tree "$source" "$target" learning .agents/learning "$force"
   install_tree "$source" "$target" repo-map .agents/repo-map "$force"
-  mkdir -p "$target/.agents/state/outcomes" "$target/.agents/state/sessions" "$target/.agents/state/review"
+  install_tree "$source" "$target" canaries .agents/canaries "$force"
+  mkdir -p "$target/.agents/state/outcomes" "$target/.agents/state/sessions" "$target/.agents/state/review" "$target/.agents/state/freezes"
 
   local f base
   for f in "$source"/orchestration/*.sh; do
@@ -107,12 +108,13 @@ self_test() {
   target=$(mktemp -d)
   trap 'rm -rf "$source" "$target"' RETURN
 
-  mkdir -p "$source/skills/foo" "$source/scripts" "$source/schemas" "$source/learning" "$source/repo-map" "$source/orchestration"
+  mkdir -p "$source/skills/foo" "$source/scripts" "$source/schemas" "$source/learning" "$source/repo-map" "$source/canaries" "$source/orchestration"
   printf 'stub\n' >"$source/skills/foo/SKILL.md"
   printf '#!/usr/bin/env bash\n' >"$source/scripts/agent-stub"
   printf '{}\n' >"$source/schemas/stub.schema.json"
   printf 'stub\n' >"$source/learning/README.md"
   printf 'stub\n' >"$source/repo-map/README.md"
+  printf 'stub\n' >"$source/canaries/README.md"
   printf '#!/usr/bin/env bash\n' >"$source/orchestration/agent-stub-session.sh"
   printf 'version: 1\ndefault:\n  risk: low\n  requires_human_review: false\n  reason: ""\n' >"$source/governance.yaml"
   printf 'schema: agent-model-routing/v1\nversion: 1\npath_classes: []\n' >"$source/model-routing.yaml"
@@ -123,8 +125,10 @@ self_test() {
 
   [[ -f "$target/.agents/skills/foo/SKILL.md" ]] || die "self-test: skills tree was not installed"
   [[ -f "$target/.agents/scripts/agent-stub" ]] || die "self-test: scripts tree was not installed"
+  [[ -f "$target/.agents/canaries/README.md" ]] || die "self-test: canaries tree was not installed"
   [[ -f "$target/scripts/agent-stub-session.sh" ]] || die "self-test: orchestration entrypoint was not installed at root scripts/"
   [[ -d "$target/.agents/state/outcomes" ]] || die "self-test: state directory structure was not created"
+  [[ -d "$target/.agents/state/freezes" ]] || die "self-test: freezes state directory was not created"
   [[ -f "$target/.agents/governance.yaml.example" ]] || die "self-test: governance.yaml was not installed as .example"
   [[ ! -e "$target/.agents/governance.yaml" ]] || die "self-test: governance.yaml must not be installed as a live file"
 

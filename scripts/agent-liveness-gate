@@ -52,6 +52,7 @@ self_test_targets=(
   agent-issue-readiness
   agent-record-outcome
   agent-outcome-index
+  agent-freeze
 )
 
 # Verify each given command is on PATH.

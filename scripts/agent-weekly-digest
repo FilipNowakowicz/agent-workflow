@@ -27,6 +27,8 @@ Markdown digest covering:
   - a "human decisions needed" rollup (open PRs, blocked issues, failures)
   - a reserved cost/token section (only populated if outcome records ever
     carry those fields; never fabricated)
+  - currently active freezes (target, reason, set at), via
+    AGENT_WEEKLY_DIGEST_FREEZE (default: .agents/scripts/agent-freeze)
 
 Options:
   --dir <path>            Outcome directory to scan (default:
@@ -40,6 +42,12 @@ Options:
                            fixtures (no GitHub or model calls) and exit.
   -h, --help              Show this help.
 
+Env knobs:
+  AGENT_WEEKLY_DIGEST_FREEZE  Freeze-status command (default:
+                               .agents/scripts/agent-freeze). Best-effort: if
+                               missing/non-executable, the freeze section
+                               reports "not available" instead of erroring.
+
 This digest is read-only: it does not file issues, post comments, merge PRs,
 or compute cost/token totals beyond fields already present in outcome
 records.
@@ -49,6 +57,29 @@ EOF
 die() {
   printf 'agent-weekly-digest: %s\n' "$*" >&2
   exit 1
+}
+
+AGENT_WEEKLY_DIGEST_FREEZE="${AGENT_WEEKLY_DIGEST_FREEZE:-.agents/scripts/agent-freeze}"
+
+# Print the "## Active freezes" section: a bulleted list of every currently
+# active freeze (target, reason, set at) via `agent-freeze status --json`, or
+# an explanatory placeholder if the freeze command is unavailable.
+render_freeze_section() {
+  echo "## Active freezes"
+  echo
+  if [[ ! -x $AGENT_WEEKLY_DIGEST_FREEZE ]]; then
+    echo "- (freeze status not available: $AGENT_WEEKLY_DIGEST_FREEZE not found or not executable)"
+    echo
+    return 0
+  fi
+  local status_json
+  status_json=$("$AGENT_WEEKLY_DIGEST_FREEZE" status --json 2>/dev/null) || status_json="[]"
+  if [[ $(printf '%s' "$status_json" | jq 'length' 2>/dev/null || printf 0) -gt 0 ]]; then
+    printf '%s' "$status_json" | jq -r '.[] | "- **\(.target)**: \(.reason) (set \(.at))"'
+  else
+    echo "- (none)"
+  fi
+  echo
 }
 
 # Read valid agent-outcome/v1 records from $1, optionally filtered to
@@ -199,6 +230,8 @@ render_digest() {
     echo "Window: all recorded outcomes (${count} outcome record(s))"
   fi
   echo
+
+  render_freeze_section
 
   echo "## PRs referenced by outcomes"
   echo
@@ -497,6 +530,26 @@ EOF
     die "self-test: a non-ISO timestamp must not abort the digest"
   [[ $out == *"| #106 | success | — |"* ]] ||
     die "self-test: expected em-dash duration for a non-ISO timestamp (got: $out)"
+
+  # Active-freezes section: with no freeze command configured (the default
+  # .agents/scripts/agent-freeze does not exist in a bare checkout), the
+  # section degrades to a "not available" note rather than erroring.
+  out=$(AGENT_WEEKLY_DIGEST_FREEZE="$tmp/no-such-freeze-checker" render_digest "$records" "$cand_dir" "")
+  [[ $out == *"## Active freezes"*"not available"* ]] ||
+    die "self-test: expected an unavailable freeze command to degrade gracefully (got: $out)"
+
+  # With a real (fake) freeze command reporting active freezes, they're
+  # listed with target, reason, and timestamp.
+  local freeze_fixture="$tmp/freeze-fixture"
+  cat >"$freeze_fixture" <<'EOF'
+#!/usr/bin/env bash
+[[ ${1:-} == status && ${2:-} == --json ]] || { echo "unexpected args: $*" >&2; exit 2; }
+printf '%s\n' '[{"target":"auto-merge","reason":"post-merge revert","at":"2026-06-01T00:00:00Z"}]'
+EOF
+  chmod +x "$freeze_fixture"
+  out=$(AGENT_WEEKLY_DIGEST_FREEZE="$freeze_fixture" render_digest "$records" "$cand_dir" "")
+  [[ $out == *"**auto-merge**: post-merge revert (set 2026-06-01T00:00:00Z)"* ]] ||
+    die "self-test: expected the active freeze to be listed (got: $out)"
 
   printf 'agent-weekly-digest self-test passed\n'
 }

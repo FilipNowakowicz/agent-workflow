@@ -20,6 +20,7 @@
       #   ${inputs.agent-workflow.paths.learning}      -> .agents/learning
       #   ${inputs.agent-workflow.paths.repoMap}       -> .agents/repo-map
       #   ${inputs.agent-workflow.paths.schemas}       -> .agents/schemas
+      #   ${inputs.agent-workflow.paths.canaries}      -> .agents/canaries
       #   ${inputs.agent-workflow.paths.orchestration} -> repo-root scripts/agent-*.sh
       #
       # Until that wiring lands, the nixos-config repo keeps running its own
@@ -31,6 +32,7 @@
         schemas = ./schemas;
         repoMap = ./repo-map;
         learning = ./learning;
+        canaries = ./canaries;
       };
     };
 }

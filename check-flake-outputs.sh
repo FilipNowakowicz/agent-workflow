@@ -44,6 +44,7 @@ marker_for() {
   schemas) printf 'outcome.schema.json\n' ;;
   repoMap) printf 'README.md\n' ;;
   learning) printf 'README.md\n' ;;
+  canaries) printf 'README.md\n' ;;
   *) printf '\n' ;;
   esac
 }
