@@ -20,6 +20,17 @@ Classify changed repository paths against the governance policy
 rule's risk level and whether it requires human review before any future
 autonomous merge path may proceed.
 
+Before classification, this also checks AGENT_POLICY_EVAL_FREEZE (default:
+.agents/scripts/agent-freeze) for a global "all" freeze. If one is active,
+EVERY path is reported as requiring human review (its reason gets a freeze
+annotation appended) and the exit status is forced to 1, regardless of what
+governance.yaml would otherwise say -- this is how "dispatcher/policy
+evaluator reads freeze state" (PLAN.md Issue 8) surfaces here, and it also
+means scripts/agent-merge-gate (which gates purely on this command's exit
+status) automatically refuses auto-merge while frozen. Best-effort: a
+missing/non-executable freeze command is silently treated as "not frozen"
+rather than an error, since this evaluator must keep working standalone.
+
 Changed-path source (pick at most one; default is stdin):
   --files-from <path>  Read newline-separated paths from <path> ("-" for
                         stdin).
@@ -34,11 +45,15 @@ Options:
   --self-test      Run a deterministic self-test and exit.
   -h, --help       Show this help.
 
+Env knobs:
+  AGENT_POLICY_EVAL_FREEZE  Freeze-state command (default:
+                             .agents/scripts/agent-freeze).
+
 Output columns (text mode): path, risk, requires_human_review, reason.
 
 Exit status:
-  0  no changed path requires human review
-  1  at least one changed path requires human review
+  0  no changed path requires human review, and no global freeze is active
+  1  at least one changed path requires human review, or a global freeze is active
   2  usage or policy-file error
 EOF
 }
@@ -55,6 +70,8 @@ script_dir() {
 default_policy_path() {
   printf '%s/governance.yaml\n' "$(CDPATH='' cd -- "$(script_dir)/.." && pwd)"
 }
+
+AGENT_POLICY_EVAL_FREEZE="${AGENT_POLICY_EVAL_FREEZE:-.agents/scripts/agent-freeze}"
 
 trim() {
   local s="$1"
@@ -318,6 +335,33 @@ EOF
     '(length == 1) and .[0].risk == "high" and .[0].requires_human_review == true' >/dev/null ||
     die "self-test: unexpected --json output: $out"
 
+  # An ordinary, otherwise-clean path with no freeze command configured
+  # (the default .agents/scripts/agent-freeze does not exist in a bare
+  # checkout of this repo) passes normally: freeze checking degrades to a
+  # no-op rather than an error.
+  out=$(printf '%s\n' "${ordinary[0]}" | "$script_path" --files-from - 2>&1) && rc=0 || rc=$?
+  [[ $rc -eq 0 ]] || die "self-test: expected an ordinary path to pass without a freeze command (got $rc; output: $out)"
+
+  # A global "all" freeze forces every path -- even an otherwise-clean one --
+  # to require human review, with the freeze reason surfaced in its row, and
+  # forces exit 1 even when no path was given at all.
+  local freeze_frozen="$tmp/freeze-frozen"
+  cat >"$freeze_frozen" <<'EOF'
+#!/usr/bin/env bash
+[[ ${1:-} == check && ${2:-} == all ]] || { echo "unexpected args: $*" >&2; exit 2; }
+echo "agent-freeze: all is frozen: self-test freeze reason" >&2
+exit 1
+EOF
+  chmod +x "$freeze_frozen"
+
+  out=$(printf '%s\n' "${ordinary[0]}" | AGENT_POLICY_EVAL_FREEZE="$freeze_frozen" "$script_path" --files-from - 2>&1) && rc=0 || rc=$?
+  [[ $rc -eq 1 ]] || die "self-test: expected a global freeze to force exit 1 for an ordinary path (got $rc; output: $out)"
+  [[ $out == *"true"*"also frozen: agent-freeze: all is frozen: self-test freeze reason"* ]] ||
+    die "self-test: expected the freeze reason to appear in the row (got: $out)"
+
+  out=$(: | AGENT_POLICY_EVAL_FREEZE="$freeze_frozen" "$script_path" --files-from - 2>&1) && rc=0 || rc=$?
+  [[ $rc -eq 1 ]] || die "self-test: expected a global freeze to force exit 1 even with zero paths (got $rc; output: $out)"
+
   printf 'agent-policy-eval self-test passed\n'
 }
 
@@ -386,6 +430,23 @@ main() {
     review="$(cut -f3 <<<"$row")"
     [[ $review == true ]] && overall=1
   done
+
+  # A global "all" freeze forces every path to require human review,
+  # regardless of governance.yaml, and is surfaced in each row's reason.
+  if [[ -x $AGENT_POLICY_EVAL_FREEZE ]]; then
+    local freeze_err
+    if ! freeze_err=$("$AGENT_POLICY_EVAL_FREEZE" check all 2>&1); then
+      freeze_err="${freeze_err//$'\n'/ }"
+      freeze_err="${freeze_err//$'\t'/ }"
+      local i path risk reason
+      for i in "${!results[@]}"; do
+        IFS=$'\t' read -r path risk review reason <<<"${results[i]}"
+        reason="${reason} [also frozen: ${freeze_err}]"
+        results[i]="$(printf '%s\t%s\ttrue\t%s' "$path" "$risk" "$reason")"
+      done
+      overall=1
+    fi
+  fi
 
   if [[ $json == 1 ]]; then
     print_json "${results[@]}"

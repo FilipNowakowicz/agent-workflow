@@ -6,6 +6,8 @@
 !/state/sessions/.gitkeep
 /state/review/*
 !/state/review/.gitkeep
+/state/freezes/*
+!/state/freezes/.gitkeep
 
 # Nix
 /result

@@ -13,6 +13,7 @@ usage() {
   cat <<'EOF'
 Usage: agent-dispatch [--label <name>] [--max-issues <n>]
                        [--max-concurrent <n>] [--dry-run] [--skip-liveness]
+                       [--skip-freeze]
        agent-dispatch --self-test
 
 Selects open issues labeled --label (default: agent:ready), excluding any
@@ -25,6 +26,9 @@ Issues that fail the pre-dispatch readiness check are NOT dispatched; a
 agent-record-outcome, mirroring what agent-run-issue.sh --require-ready would
 have recorded, without burning a session.
 
+Before doing anything else, this refuses to run at all while a global "all"
+freeze is active (agent-freeze check all) -- see agent-freeze --help.
+
 Options:
   --label <name>        Issue label to dispatch (default: agent:ready).
   --max-issues <n>      Maximum number of issues to dispatch this run
@@ -36,9 +40,12 @@ Options:
   --skip-liveness       Skip the pre-dispatch liveness gate. Intended for
                          self-tests and pipelines that already verified
                          liveness.
+  --skip-freeze         Skip the pre-dispatch freeze check. Intended for
+                         self-tests only -- a real dispatch run should always
+                         respect an active freeze.
   --self-test           Run a local smoke test (mocked gh/runner/readiness/
-                         liveness fixtures; no GitHub or model calls) and
-                         exit.
+                         liveness/freeze fixtures; no GitHub or model calls)
+                         and exit.
   -h, --help            Show this help.
 
 Env knobs (mainly for testing):
@@ -48,6 +55,8 @@ Env knobs (mainly for testing):
                                   .agents/scripts/agent-issue-readiness).
   AGENT_DISPATCH_LIVENESS        Liveness gate command (default:
                                   .agents/scripts/agent-liveness-gate).
+  AGENT_DISPATCH_FREEZE          Freeze-state command (default:
+                                  .agents/scripts/agent-freeze).
   AGENT_DISPATCH_RECORD_OUTCOME  Outcome recorder command (default:
                                   .agents/scripts/agent-record-outcome).
   AGENT_DISPATCH_COMMENTS        Post GitHub bounce comments for non-ready
@@ -77,6 +86,7 @@ utc_now() {
 AGENT_DISPATCH_RUNNER="${AGENT_DISPATCH_RUNNER:-scripts/agent-run-issue.sh}"
 AGENT_DISPATCH_READINESS="${AGENT_DISPATCH_READINESS:-.agents/scripts/agent-issue-readiness}"
 AGENT_DISPATCH_LIVENESS="${AGENT_DISPATCH_LIVENESS:-.agents/scripts/agent-liveness-gate}"
+AGENT_DISPATCH_FREEZE="${AGENT_DISPATCH_FREEZE:-.agents/scripts/agent-freeze}"
 AGENT_DISPATCH_RECORD_OUTCOME="${AGENT_DISPATCH_RECORD_OUTCOME:-.agents/scripts/agent-record-outcome}"
 AGENT_DISPATCH_COMMENTS="${AGENT_DISPATCH_COMMENTS:-1}"
 AGENT_OUTCOME_DIR="${AGENT_OUTCOME_DIR:-.agents/state/outcomes}"
@@ -290,9 +300,24 @@ exit 1
 EOF
   chmod +x "$bin/liveness-ok" "$bin/liveness-fail"
 
+  # Fake freeze commands: one reporting unfrozen, one reporting a global freeze.
+  cat >"$bin/freeze-ok" <<'EOF'
+#!/usr/bin/env bash
+[[ ${1:-} == check && ${2:-} == all ]] || { echo "unexpected args: $*" >&2; exit 2; }
+exit 0
+EOF
+  cat >"$bin/freeze-frozen" <<'EOF'
+#!/usr/bin/env bash
+[[ ${1:-} == check && ${2:-} == all ]] || { echo "unexpected args: $*" >&2; exit 2; }
+echo "agent-freeze: all is frozen: self-test freeze" >&2
+exit 1
+EOF
+  chmod +x "$bin/freeze-ok" "$bin/freeze-frozen"
+
   export PATH="$bin:$PATH"
   export AGENT_DISPATCH_READINESS="$bin/readiness"
   export AGENT_DISPATCH_RUNNER="$bin/runner"
+  export AGENT_DISPATCH_FREEZE="$bin/freeze-ok"
   # Point the outcome recorder at the real sibling script so the self-test is
   # self-contained (the default .agents/scripts/... path does not exist in a
   # bare checkout of this repo).
@@ -322,6 +347,21 @@ EOF
   set -e
   [[ $rc -ne 0 ]] || die "self-test: expected a failing liveness gate to abort dispatch"
   [[ ! -s $RUNNER_LOG ]] || die "self-test: runner must not be invoked when liveness gate fails"
+
+  # A global freeze aborts the dispatch before discovery/dispatch too.
+  : >"$RUNNER_LOG"
+  set +e
+  out=$(AGENT_DISPATCH_FREEZE="$bin/freeze-frozen" "$script_path" --skip-liveness --max-issues 1 2>&1)
+  rc=$?
+  set -e
+  [[ $rc -ne 0 ]] || die "self-test: expected an active freeze to abort dispatch"
+  [[ $out == *"a global freeze is active"* ]] || die "self-test: expected a freeze-abort message (got: $out)"
+  [[ ! -s $RUNNER_LOG ]] || die "self-test: runner must not be invoked while frozen"
+
+  # --skip-freeze bypasses the freeze check.
+  : >"$RUNNER_LOG"
+  out=$(AGENT_DISPATCH_FREEZE="$bin/freeze-frozen" "$script_path" --skip-liveness --skip-freeze --max-issues 1 2>&1)
+  [[ $out == *"dispatching issue #901"* ]] || die "self-test: expected --skip-freeze to bypass an active freeze (got: $out)"
 
   # --dry-run lists eligible issues without invoking readiness or the runner.
   : >"$RUNNER_LOG"
@@ -381,6 +421,7 @@ main() {
   local max_concurrent=1
   local dry_run=0
   local skip_liveness=0
+  local skip_freeze=0
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -404,6 +445,10 @@ main() {
       skip_liveness=1
       shift
       ;;
+    --skip-freeze)
+      skip_freeze=1
+      shift
+      ;;
     --self-test)
       self_test
       exit 0
@@ -420,6 +465,11 @@ main() {
 
   [[ $max_issues =~ ^[0-9]+$ && $max_issues -gt 0 ]] || die "--max-issues must be a positive integer"
   [[ $max_concurrent == 1 ]] || die "--max-concurrent must be 1 (higher concurrency is out of scope)"
+
+  if [[ $skip_freeze == 0 ]]; then
+    [[ -x $AGENT_DISPATCH_FREEZE ]] || die "freeze command not found or not executable: $AGENT_DISPATCH_FREEZE"
+    "$AGENT_DISPATCH_FREEZE" check all || die "a global freeze is active; aborting dispatch (see: $AGENT_DISPATCH_FREEZE status)"
+  fi
 
   if [[ $skip_liveness == 0 ]]; then
     [[ -x $AGENT_DISPATCH_LIVENESS ]] || die "liveness gate not found or not executable: $AGENT_DISPATCH_LIVENESS"

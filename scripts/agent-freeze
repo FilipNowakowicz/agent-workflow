@@ -1,0 +1,365 @@
+#!/usr/bin/env bash
+# Manual/automatic freeze mechanism for autonomy, auto-merge, path classes,
+# and model profiles (PLAN.md "Issue 8 — Add freeze mechanism", "19.
+# Rollback and Quarantine").
+#
+# A freeze is a marker file under AGENT_FREEZE_DIR (default: state/freezes/,
+# gitignored operator-local state — same convention as state/outcomes/ and
+# state/sessions/). Its mere presence means "frozen"; this script is the only
+# supported way to create, clear, or query one, so every consumer (the
+# dispatcher, the policy evaluator, the weekly digest, ...) agrees on the
+# same on-disk contract instead of each parsing freeze state independently.
+#
+# A global "all" freeze also satisfies any narrower `check` (auto-merge, a
+# specific path-class, a specific model): "all" is a superset, not a
+# separate, independently-trackable state.
+#
+# This script only manages freeze *state*; it does not itself enforce
+# anything. Enforcement is each consumer's job: `agent-dispatch` refuses to
+# start a batch while "all" is frozen, `agent-policy-eval` surfaces freeze
+# state in its decision output, `agent-weekly-digest` reports active
+# freezes. A frozen state is advisory data until a caller chooses to act on
+# it, same as governance.yaml's own non-enforcement stance.
+set -euo pipefail
+
+AGENT_FREEZE_DIR="${AGENT_FREEZE_DIR:-state/freezes}"
+
+usage() {
+  cat <<'EOF'
+Usage: agent-freeze all [--reason <text>]
+       agent-freeze auto-merge [--reason <text>]
+       agent-freeze path-class <name> [--reason <text>]
+       agent-freeze model <name> [--reason <text>]
+       agent-freeze clear all|auto-merge|path-class <name>|model <name>
+       agent-freeze status [--json]
+       agent-freeze check all|auto-merge|path-class <name>|model <name>
+       agent-freeze --self-test
+
+Freeze (or clear, or query) autonomy for the agent workflow loop. Freeze
+state is stored as marker files under AGENT_FREEZE_DIR (default:
+state/freezes/) and is advisory: this command only manages that state, it
+does not itself block dispatch or merge (see individual consumers:
+agent-dispatch, agent-policy-eval, agent-weekly-digest).
+
+Targets:
+  all               Freeze all autonomous activity (broadest; also satisfies
+                     every narrower `check` below).
+  auto-merge        Freeze GitHub-native auto-merge specifically.
+  path-class <name> Freeze a named path class (e.g. from model-routing.yaml).
+  model <name>      Freeze a named model/agent profile.
+
+Commands:
+  <target>          Set the freeze, optionally with --reason <text> recorded
+                     alongside it (default reason: "no reason given").
+  clear <target>    Remove the freeze for <target>. Idempotent: clearing an
+                     already-unfrozen target succeeds.
+  status            List all currently active freezes (target, reason, set
+                     at). --json emits a JSON array instead of a table.
+  check <target>    Exit 0 if <target> is NOT frozen, exit 1 (printing the
+                     reason to stderr) if it IS frozen (directly, or via a
+                     broader "all" freeze). Intended for other scripts to
+                     gate on, e.g. `agent-freeze check all || exit 1`.
+
+Env knobs:
+  AGENT_FREEZE_DIR  Directory freeze markers are stored under (default:
+                     state/freezes).
+
+Options:
+  --reason <text>   Reason recorded with a freeze (default: "no reason given").
+  --json             status only: emit a JSON array instead of a table.
+  --self-test       Run a deterministic, offline self-test and exit.
+  -h, --help        Show this help.
+EOF
+}
+
+die() {
+  printf 'agent-freeze: %s\n' "$*" >&2
+  exit 1
+}
+
+utc_now() {
+  date -u '+%Y-%m-%dT%H:%M:%SZ'
+}
+
+# Parse a freeze-target spec from the front of "$@", consuming 1 or 2
+# positional args. Sets globals TARGET_LABEL (human-facing target name),
+# TARGET_BASENAME (on-disk file stem, no directory or .json suffix), and
+# REPLY_CONSUMED (args consumed) -- called directly (not via `$(...)`), since
+# a command substitution would set these in a subshell and lose them. Dies
+# with a usage error on an unrecognized/incomplete spec.
+parse_target() {
+  case "${1:-}" in
+  all)
+    TARGET_LABEL=all
+    TARGET_BASENAME=all
+    REPLY_CONSUMED=1
+    ;;
+  auto-merge)
+    TARGET_LABEL=auto-merge
+    TARGET_BASENAME=auto-merge
+    REPLY_CONSUMED=1
+    ;;
+  path-class)
+    [[ -n ${2:-} ]] || die "path-class needs a <name>"
+    TARGET_LABEL="path-class $2"
+    TARGET_BASENAME="path-class.$2"
+    REPLY_CONSUMED=2
+    ;;
+  model)
+    [[ -n ${2:-} ]] || die "model needs a <name>"
+    TARGET_LABEL="model $2"
+    TARGET_BASENAME="model.$2"
+    REPLY_CONSUMED=2
+    ;;
+  '')
+    die "missing freeze target (all|auto-merge|path-class <name>|model <name>)"
+    ;;
+  *)
+    die "unknown freeze target: $1"
+    ;;
+  esac
+}
+
+marker_path() {
+  printf '%s/%s.json\n' "$AGENT_FREEZE_DIR" "$1"
+}
+
+do_freeze() {
+  local label="$1" basename="$2" reason="$3"
+  mkdir -p "$AGENT_FREEZE_DIR"
+  local path
+  path=$(marker_path "$basename")
+  printf '{"target":"%s","reason":"%s","at":"%s"}\n' \
+    "$label" "$reason" "$(utc_now)" >"$path"
+  printf 'agent-freeze: froze %s (%s)\n' "$label" "$path"
+}
+
+do_clear() {
+  local label="$1" basename="$2"
+  local path
+  path=$(marker_path "$basename")
+  if [[ -f $path ]]; then
+    rm -f "$path"
+    printf 'agent-freeze: cleared %s\n' "$label"
+  else
+    printf 'agent-freeze: %s was not frozen (nothing to clear)\n' "$label"
+  fi
+}
+
+# Print "<target>\t<reason>\t<at>" for every active freeze marker,
+# reconstructing the human-facing target label from the marker's own JSON
+# (not the filename) so path-class/model names with dots round-trip cleanly.
+list_active() {
+  [[ -d $AGENT_FREEZE_DIR ]] || return 0
+  local f
+  for f in "$AGENT_FREEZE_DIR"/*.json; do
+    [[ -e $f ]] || continue
+    jq -r '[.target, .reason, .at] | @tsv' "$f" 2>/dev/null
+  done | sort
+}
+
+do_status() {
+  local json="$1"
+  if [[ $json == 1 ]]; then
+    local entries=()
+    local line target reason at
+    while IFS=$'\t' read -r target reason at; do
+      [[ -n $target ]] || continue
+      entries+=("$(jq -n --arg t "$target" --arg r "$reason" --arg a "$at" \
+        '{target:$t,reason:$r,at:$a}')")
+    done < <(list_active)
+    if [[ ${#entries[@]} -eq 0 ]]; then
+      printf '[]\n'
+    else
+      printf '%s\n' "${entries[@]}" | jq -s -c '.'
+    fi
+    return 0
+  fi
+
+  local active
+  active=$(list_active)
+  if [[ -z $active ]]; then
+    printf 'agent-freeze: no active freezes\n'
+    return 0
+  fi
+  printf 'TARGET\tREASON\tAT\n'
+  printf '%s\n' "$active"
+}
+
+# Exit 0 if <label>/<basename> is NOT frozen; exit 1 (printing the reason to
+# stderr) if it is frozen either directly, or because "all" is frozen.
+do_check() {
+  local label="$1" basename="$2"
+  local path
+  path=$(marker_path "$basename")
+  if [[ -f $path ]]; then
+    printf 'agent-freeze: %s is frozen: %s\n' "$label" "$(jq -r '.reason' "$path" 2>/dev/null || printf 'no reason given')" >&2
+    return 1
+  fi
+  if [[ $basename != all ]]; then
+    local all_path
+    all_path=$(marker_path all)
+    if [[ -f $all_path ]]; then
+      printf 'agent-freeze: %s is frozen via a global "all" freeze: %s\n' "$label" "$(jq -r '.reason' "$all_path" 2>/dev/null || printf 'no reason given')" >&2
+      return 1
+    fi
+  fi
+  return 0
+}
+
+self_test() {
+  local tmp out err
+  tmp=$(mktemp -d)
+  trap 'rm -rf "$tmp"' RETURN
+  export AGENT_FREEZE_DIR="$tmp/freezes"
+
+  local script_path
+  script_path="$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+
+  # Nothing frozen initially: check succeeds for every target kind, status
+  # reports empty.
+  "$script_path" check all || die "self-test: expected 'all' unfrozen initially"
+  "$script_path" check auto-merge || die "self-test: expected 'auto-merge' unfrozen initially"
+  "$script_path" check path-class nix-modules || die "self-test: expected path-class unfrozen initially"
+  "$script_path" check model codex-executor || die "self-test: expected model unfrozen initially"
+  out=$("$script_path" status) || die "self-test: status failed"
+  [[ $out == *"no active freezes"* ]] || die "self-test: expected empty status (got: $out)"
+  out=$("$script_path" status --json) || die "self-test: status --json failed"
+  [[ $out == "[]" ]] || die "self-test: expected empty JSON status (got: $out)"
+
+  # Freezing auto-merge blocks its own check but not others.
+  "$script_path" auto-merge --reason "post-merge revert" >/dev/null ||
+    die "self-test: freeze auto-merge failed"
+  if "$script_path" check auto-merge >/dev/null 2>&1; then
+    die "self-test: expected 'auto-merge' to be frozen"
+  fi
+  "$script_path" check all || die "self-test: 'all' must remain unfrozen by an auto-merge-only freeze"
+  "$script_path" check path-class nix-modules || die "self-test: path-class must remain unfrozen by an auto-merge-only freeze"
+
+  # status lists the reason and target.
+  out=$("$script_path" status) || die "self-test: status after freeze failed"
+  [[ $out == *"auto-merge"*"post-merge revert"* ]] ||
+    die "self-test: expected status to list target+reason (got: $out)"
+  out=$("$script_path" status --json) || die "self-test: status --json after freeze failed"
+  printf '%s' "$out" | jq -e '(length == 1) and .[0].target == "auto-merge" and .[0].reason == "post-merge revert"' >/dev/null ||
+    die "self-test: unexpected JSON status (got: $out)"
+
+  # clear removes it; check succeeds again; clearing twice is a no-op, not an error.
+  "$script_path" clear auto-merge >/dev/null || die "self-test: clear auto-merge failed"
+  "$script_path" check auto-merge || die "self-test: expected 'auto-merge' unfrozen after clear"
+  "$script_path" clear auto-merge >/dev/null || die "self-test: clearing an already-clear target should be a no-op success"
+
+  # path-class and model freezes are independently named and checked.
+  "$script_path" path-class nix-modules --reason "flake eval regression" >/dev/null ||
+    die "self-test: freeze path-class failed"
+  if "$script_path" check path-class nix-modules >/dev/null 2>&1; then
+    die "self-test: expected path-class nix-modules to be frozen"
+  fi
+  "$script_path" check path-class docs || die "self-test: a different path-class must remain unfrozen"
+  "$script_path" model codex-executor --reason "runaway cost" >/dev/null ||
+    die "self-test: freeze model failed"
+  if "$script_path" check model codex-executor >/dev/null 2>&1; then
+    die "self-test: expected model codex-executor to be frozen"
+  fi
+  "$script_path" check model claude-code || die "self-test: a different model must remain unfrozen"
+  "$script_path" clear path-class nix-modules >/dev/null
+  "$script_path" clear model codex-executor >/dev/null
+
+  # A global "all" freeze satisfies every narrower check too.
+  "$script_path" all --reason "secret access attempt" >/dev/null ||
+    die "self-test: freeze all failed"
+  if "$script_path" check all >/dev/null 2>&1; then
+    die "self-test: expected 'all' to be frozen"
+  fi
+  if "$script_path" check auto-merge >/dev/null 2>&1; then
+    die "self-test: expected an 'all' freeze to also block an auto-merge check"
+  fi
+  if "$script_path" check path-class nix-modules >/dev/null 2>&1; then
+    die "self-test: expected an 'all' freeze to also block a path-class check"
+  fi
+  if "$script_path" check model codex-executor >/dev/null 2>&1; then
+    die "self-test: expected an 'all' freeze to also block a model check"
+  fi
+  err=$("$script_path" check auto-merge 2>&1 >/dev/null) || true
+  [[ $err == *'global "all" freeze'* ]] ||
+    die "self-test: expected the check-via-all error to explain it was via the global freeze (got: $err)"
+  "$script_path" clear all >/dev/null
+
+  # Unknown/missing targets are usage errors.
+  if "$script_path" bogus-target >/dev/null 2>&1; then
+    die "self-test: expected an unknown target to fail"
+  fi
+  if "$script_path" path-class >/dev/null 2>&1; then
+    die "self-test: expected path-class with no name to fail"
+  fi
+
+  printf 'agent-freeze self-test passed\n'
+}
+
+main() {
+  local cmd="${1:-}"
+  case "$cmd" in
+  --self-test)
+    self_test
+    exit 0
+    ;;
+  -h | --help)
+    usage
+    exit 0
+    ;;
+  status)
+    shift
+    local json=0
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+      --json)
+        json=1
+        shift
+        ;;
+      *)
+        die "unknown argument: $1"
+        ;;
+      esac
+    done
+    do_status "$json"
+    ;;
+  check)
+    shift
+    local TARGET_LABEL TARGET_BASENAME REPLY_CONSUMED
+    parse_target "$@"
+    shift "$REPLY_CONSUMED"
+    [[ $# -eq 0 ]] || die "unexpected trailing argument: $1"
+    do_check "$TARGET_LABEL" "$TARGET_BASENAME"
+    ;;
+  clear)
+    shift
+    local TARGET_LABEL TARGET_BASENAME REPLY_CONSUMED
+    parse_target "$@"
+    shift "$REPLY_CONSUMED"
+    [[ $# -eq 0 ]] || die "unexpected trailing argument: $1"
+    do_clear "$TARGET_LABEL" "$TARGET_BASENAME"
+    ;;
+  '')
+    die "missing command (all|auto-merge|path-class <name>|model <name>|clear|status|check)"
+    ;;
+  *)
+    local TARGET_LABEL TARGET_BASENAME REPLY_CONSUMED reason="no reason given"
+    parse_target "$@"
+    shift "$REPLY_CONSUMED"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+      --reason)
+        reason="${2:?--reason needs a value}"
+        shift 2
+        ;;
+      *)
+        die "unknown argument: $1"
+        ;;
+      esac
+    done
+    do_freeze "$TARGET_LABEL" "$TARGET_BASENAME" "$reason"
+    ;;
+  esac
+}
+
+main "$@"
