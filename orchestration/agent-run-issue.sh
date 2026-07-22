@@ -443,6 +443,52 @@ EOF
   printf '%s\n' "$pr_url"
 }
 
+utc_now() {
+  date -u '+%Y-%m-%dT%H:%M:%SZ'
+}
+
+# Called from sync_base before the working tree is discarded, in case a prior
+# issue's session left uncommitted edits behind (e.g. it hit
+# AGENT_INNER_TIMEOUT_SECONDS mid-edit without committing). Left unguarded,
+# `git checkout $BASE_BRANCH && git reset --hard` silently destroys that work
+# with no branch, stash, or diff left anywhere to recover it from (dogfood
+# loss on issue #320). When the dirty tree sits on a real issue branch, commit
+# it there as a WIP commit and push so it survives even if this host is
+# reprovisioned; only fall back to a local `git stash` (which would NOT
+# survive host reprovisioning) when there is no such branch to push to, e.g.
+# detached HEAD or dirty changes directly on $BASE_BRANCH. Best-effort: logs
+# loudly but never fails the caller, since a sync must proceed either way.
+preserve_dirty_worktree() {
+  [[ -n $(git status --short 2>/dev/null) ]] || return 0
+
+  local branch
+  branch=$(git symbolic-ref --short HEAD 2>/dev/null || printf 'DETACHED')
+
+  if [[ -n $branch && $branch != DETACHED && $branch != "$BASE_BRANCH" ]]; then
+    echo "agent-run-issue: WARNING: dirty worktree found on branch $branch before syncing $BASE_BRANCH; committing and pushing a WIP commit to preserve it" >&2
+    if git add -A &&
+      git commit -q -m "WIP: auto-preserved dirty worktree before next issue sync ($(utc_now))" &&
+      git push -q -u origin "$branch"; then
+      echo "agent-run-issue: preserved dirty worktree as a WIP commit on $branch (pushed to origin)" >&2
+      return 0
+    fi
+    echo "agent-run-issue: failed to commit/push WIP preservation commit on $branch; falling back to git stash" >&2
+  else
+    echo "agent-run-issue: WARNING: dirty worktree found on $branch before syncing $BASE_BRANCH; stashing to avoid data loss" >&2
+  fi
+
+  git stash push -u -m "agent-run-issue: auto-stash before $BASE_BRANCH sync ($(utc_now))" >&2 ||
+    echo "agent-run-issue: WARNING: failed to stash dirty worktree; proceeding with sync anyway (risk of data loss)" >&2
+}
+
+sync_base() {
+  echo "agent-run-issue: syncing $BASE_BRANCH with origin ..." >&2
+  preserve_dirty_worktree
+  git fetch origin --prune
+  git checkout "$BASE_BRANCH"
+  git reset --hard "origin/$BASE_BRANCH"
+}
+
 # Resolve a path-ish token from issue prose to an existing repo path, or print
 # nothing. Strips trailing prose punctuation and reduces a glob mention
 # (".agents/state/outcomes/*.json") to its longest existing leading directory.
@@ -894,6 +940,77 @@ EOF
     rm -f dirty.txt
   ) || exit 1
 
+  # --- dirty worktree preserved before base sync, not destroyed by reset --hard (#320) ---
+  local dirty_origin dirty_repo old_base_branch
+  dirty_origin="$tmp/dirty-origin.git"
+  dirty_repo="$tmp/dirty-repo"
+  git init -q --bare "$dirty_origin"
+  git init -q -b main "$dirty_repo"
+  git -C "$dirty_repo" config user.email test@example.invalid
+  git -C "$dirty_repo" config user.name 'Agent Runner Test'
+  git -C "$dirty_repo" remote add origin "$dirty_origin"
+  printf 'seed\n' >"$dirty_repo/README.md"
+  git -C "$dirty_repo" add README.md
+  git -C "$dirty_repo" commit -q -m seed
+  git -C "$dirty_repo" push -q origin main
+  git -C "$dirty_repo" checkout -q -b codex/dirty-issue
+
+  old_base_branch="$BASE_BRANCH"
+  BASE_BRANCH=main
+
+  # a dirty tree on a real issue branch is committed as WIP and pushed
+  (
+    cd "$dirty_repo"
+    printf 'uncommitted edit\n' >work.txt
+    preserve_dirty_worktree
+    [[ -z $(git status --short) ]] ||
+      die "self-test: preserve_dirty_worktree must leave a clean tree on the issue branch"
+    [[ $(git log -1 --format=%s) == WIP:* ]] ||
+      die "self-test: preserve_dirty_worktree must leave a WIP commit on the issue branch"
+    git ls-remote --exit-code --heads origin codex/dirty-issue >/dev/null ||
+      die "self-test: preserve_dirty_worktree must push the WIP commit to origin"
+  ) || exit 1
+
+  # a clean tree is a no-op
+  (
+    cd "$dirty_repo"
+    before_sha=$(git rev-parse HEAD)
+    preserve_dirty_worktree
+    after_sha=$(git rev-parse HEAD)
+    [[ $before_sha == "$after_sha" ]] ||
+      die "self-test: preserve_dirty_worktree must be a no-op on a clean tree"
+  ) || exit 1
+
+  # dirty changes directly on $BASE_BRANCH (no issue branch to push to) fall back to stash
+  (
+    cd "$dirty_repo"
+    git checkout -q main
+    printf 'dirty on base\n' >base-dirty.txt
+    preserve_dirty_worktree
+    [[ -z $(git status --short) ]] ||
+      die "self-test: preserve_dirty_worktree must leave a clean tree via stash fallback"
+    git stash list | grep -q 'auto-stash before main sync' ||
+      die "self-test: preserve_dirty_worktree must stash dirty changes made directly on \$BASE_BRANCH"
+    git stash drop -q
+  ) || exit 1
+
+  # sync_base end-to-end: dirty edits left by a "prior issue" on its own branch
+  # must survive a full base sync instead of being wiped by reset --hard.
+  (
+    cd "$dirty_repo"
+    git checkout -q codex/dirty-issue
+    printf 'second uncommitted edit\n' >work2.txt
+    sync_base
+    [[ $(git symbolic-ref --short HEAD) == main ]] ||
+      die "self-test: sync_base must leave HEAD on \$BASE_BRANCH after syncing"
+    [[ -z $(git status --short) ]] ||
+      die "self-test: sync_base must leave a clean tree on \$BASE_BRANCH"
+    git show origin/codex/dirty-issue:work2.txt >/dev/null 2>&1 ||
+      die "self-test: sync_base must preserve the prior issue's dirty edit on its pushed branch, not destroy it"
+  ) || exit 1
+
+  BASE_BRANCH="$old_base_branch"
+
   # --- issue path-hint construction (#281) ---
   mkdir -p scripts .agents/state/outcomes
   : >scripts/validate.sh
@@ -1188,17 +1305,6 @@ if (: >"$SESSION_LOCK") 2>/dev/null; then
 fi
 
 cd "$AGENT_REPO_DIR"
-
-utc_now() {
-  date -u '+%Y-%m-%dT%H:%M:%SZ'
-}
-
-sync_base() {
-  echo "agent-run-issue: syncing $BASE_BRANCH with origin ..." >&2
-  git fetch origin --prune
-  git checkout "$BASE_BRANCH"
-  git reset --hard "origin/$BASE_BRANCH"
-}
 
 snapshot_learning_candidates() {
   local output="$1"
