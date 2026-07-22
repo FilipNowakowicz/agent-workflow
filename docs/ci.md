@@ -3,9 +3,11 @@
 `.github/workflows/ci.yml` runs three jobs on every pull request and on push
 to `main`. Every job is a deterministic, local-reproducible check: none of
 them call Claude or Codex, need a GitHub write token, or touch GCP, SSH, or
-any other private host state. It is not yet a required branch-protection
-check (see issue #27's non-goals) — it exists so regressions are caught
-automatically before that is wired up.
+any other private host state. All three jobs (`whitespace`, `self-tests`,
+`nix-flake-check`) are required branch-protection checks on `main`: a PR
+cannot merge until they pass and the branch is up to date. Repo admins are
+exempt from the PR requirement (`enforce_admins: false`) so a maintainer can
+still push directly to `main` when needed.
 
 ## Running the same checks locally
 
