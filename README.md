@@ -73,6 +73,10 @@ yet.
   evidence.
 - **Repo map** (`repo-map/`): lightweight indexing and query helpers for
   finding likely files before broad exploration.
+- **Personal skills** (`personal-skills/`): general-purpose skills outside
+  this repo's agent-workflow domain, kept here for convenience only. Not
+  part of the flake's `paths` output or `install.sh` — see
+  [`personal-skills/README.md`](personal-skills/README.md).
 
 ## Maturity and sharp edges
 
