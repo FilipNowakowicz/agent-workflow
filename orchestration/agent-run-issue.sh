@@ -797,17 +797,20 @@ Treat these as reviewed context to verify against the current tree, not as a sub
   printf '%s' "$prompt"
 }
 
-# Argv (one per line, excluding the leading claude binary) for the per-issue
+# Argv (NUL-separated, excluding the leading claude binary) for the per-issue
 # headless session. A pure function of the current env knobs so self-test can
-# assert its exact contents without a real claude/gh session.
+# assert its exact contents without a real claude/gh session. NUL-separated
+# (not newline-separated) because $prompt itself contains embedded newlines
+# (promoted-learnings text) — a newline-split mapfile would fragment it into
+# several bogus argv entries, each parsed by claude as its own flag.
 build_claude_args() {
   local prompt="$1"
-  printf '%s\n' -p "$prompt" --output-format stream-json --verbose
+  printf '%s\0' -p "$prompt" --output-format stream-json --verbose
   if [[ $AGENT_MAX_TURNS -gt 0 ]]; then
-    printf '%s\n' --max-turns "$AGENT_MAX_TURNS"
+    printf '%s\0' --max-turns "$AGENT_MAX_TURNS"
   fi
   if [[ $AGENT_CLAUDE_SKIP_PERMISSIONS == 1 ]]; then
-    printf '%s\n' --dangerously-skip-permissions
+    printf '%s\0' --dangerously-skip-permissions
   fi
 }
 
@@ -1247,13 +1250,13 @@ EOF
     die "self-test: dispatch prompt missing the subagent-isolation rationale"
 
   # --- per-issue claude argv includes --dangerously-skip-permissions by default (#46) ---
-  local -a args_default args_no_skip args_zero_turns
-  mapfile -t args_default < <(build_claude_args "test prompt")
+  local -a args_default args_no_skip args_zero_turns args_multiline
+  mapfile -d '' -t args_default < <(build_claude_args "test prompt")
   printf '%s\0' "${args_default[@]}" | grep -zqx -- '--dangerously-skip-permissions' ||
     die "self-test: build_claude_args must include --dangerously-skip-permissions by default (got: ${args_default[*]})"
 
   AGENT_CLAUDE_SKIP_PERMISSIONS=0
-  mapfile -t args_no_skip < <(build_claude_args "test prompt")
+  mapfile -d '' -t args_no_skip < <(build_claude_args "test prompt")
   AGENT_CLAUDE_SKIP_PERMISSIONS=1
   if printf '%s\0' "${args_no_skip[@]}" | grep -zqx -- '--dangerously-skip-permissions'; then
     die "self-test: AGENT_CLAUDE_SKIP_PERMISSIONS=0 must omit --dangerously-skip-permissions (got: ${args_no_skip[*]})"
@@ -1261,11 +1264,21 @@ EOF
 
   local old_max_turns="$AGENT_MAX_TURNS"
   AGENT_MAX_TURNS=0
-  mapfile -t args_zero_turns < <(build_claude_args "test prompt")
+  mapfile -d '' -t args_zero_turns < <(build_claude_args "test prompt")
   AGENT_MAX_TURNS="$old_max_turns"
   if printf '%s\0' "${args_zero_turns[@]}" | grep -zqx -- '--max-turns'; then
     die "self-test: AGENT_MAX_TURNS=0 must omit --max-turns (got: ${args_zero_turns[*]})"
   fi
+
+  # A prompt with embedded newlines (real prompts do, via promoted-learnings
+  # text) must survive as a single argv element, not get fragmented into one
+  # bogus arg per line — a newline-split mapfile did exactly that in dogfood
+  # run 2026-07-23 (issue #49): "claude: error: unknown option '- 2026-06-15-...'"
+  # because a promoted-learning bullet line was parsed as its own CLI flag.
+  local multiline_prompt=$'line one\n- looks-like-a-flag: line two\nline three'
+  mapfile -d '' -t args_multiline < <(build_claude_args "$multiline_prompt")
+  [[ ${#args_multiline[@]} -ge 2 && ${args_multiline[1]} == "$multiline_prompt" ]] ||
+    die "self-test: a prompt with embedded newlines must remain a single argv element (got ${#args_multiline[@]} elements: ${args_multiline[*]})"
 
   # --- positional issue argument validation (#11) ---
   set +e
@@ -1634,7 +1647,7 @@ run_one() {
   # --max-turns is a hard backstop on the turn-count quadratic that the
   # wall-clock timeout does not bound; 0 disables it.
   local -a claude_args
-  mapfile -t claude_args < <(build_claude_args "$prompt")
+  mapfile -d '' -t claude_args < <(build_claude_args "$prompt")
 
   status=success
   exit_code=0
