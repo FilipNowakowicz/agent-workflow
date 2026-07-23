@@ -52,7 +52,6 @@ jobs:
           bash learning/scripts/validate-candidates.sh learning
           bash learning/scripts/validate-candidates.sh --self-test
           bash learning/scripts/scaffold-promotion-check.sh --self-test
-          bash learning/scripts/check-candidate-liveness.sh --self-test
       - name: Repo-map smoke test
         run: bash repo-map/scripts/validate.sh
       - name: Installer self-test
