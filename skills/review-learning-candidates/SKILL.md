@@ -32,9 +32,11 @@ For candidates already promoted by review and routed `implement-fix` with
 `best_form: test`, `best_form: assertion`, `best_form: invariant`, or
 `best_form: check`, use
 `.agents/learning/scripts/scaffold-promotion-check.sh` to create the failing
-check stub and `scripts/validate.sh` wiring before writing prose. The generated
-stub is intentionally red until you replace its TODO body with the real
-assertion, and it keeps a back-reference to the candidate for audit.
+check stub and wire it into the consumer repo's own validation entrypoint
+(default `scripts/validate.sh`; pass `--validate-file` if the repo uses a
+different one) before writing prose. The generated stub is intentionally red
+until you replace its TODO body with the real assertion, and it keeps a
+back-reference to the candidate for audit.
 
 ## Workflow
 
@@ -79,12 +81,13 @@ coherent unit:
   validator script). These are self-checking via `merge-gate` and deserve to be
   reviewed apart from prose.
 - **Separate PR(s) for prose** (skill / doc), grouped by the file they touch —
-  e.g. all `nix-verification-loop` skill additions together, all
+  e.g. all additions to one consumer-specific verification skill together, all
   `docs/operations.md` additions together.
 
 Keep PRs off `main` (branch first) and conflict-free: group so two open PRs
-never edit the same file. If a candidate's promotion needs validation, use the
-`nix-verification-loop` skill to pick the smallest meaningful check.
+never edit the same file. If a candidate's promotion needs validation, use
+whatever build/deploy verification skill the consumer repo has (if any) to
+pick the smallest meaningful check.
 
 ### 4. Bookkeep in the same branch
 
@@ -111,7 +114,8 @@ In the PR that implements a promotion, also:
 - Do not promote more than one unrelated batch at once unless the user asks.
 - Do not put secrets, host credentials, or transient session facts into docs or
   memory.
-- If promotion changes repo behavior, use the `nix-verification-loop` skill to
-  pick the smallest meaningful validation.
+- If promotion changes repo behavior, use whatever build/deploy verification
+  skill the consumer repo has (if any) to pick the smallest meaningful
+  validation.
 - Review stays human-gated: the promotion PR is the gate. Do not enable
   auto-merge or merge it yourself unless the user asks.

@@ -86,9 +86,12 @@ yet.
 This is real dogfood from a NixOS/GCP agent loop, extracted into a reusable
 provider repo. It is not yet a turnkey product. In particular:
 
-- some skills and self-tests still hardcode `nixos-config`-specific
-  conventions (e.g. `scripts/validate.sh`, `lib/invariants.nix`) as if they
-  were generic — genericizing engine vs. consumer-local config is still open;
+- skills and tooling that reference consumer validation (the equivalent of
+  `scripts/validate.sh`) or a Nix-specific verification skill now treat those
+  as consumer-local conventions to point at, not hardcoded assumptions;
+  `learning/scripts/scaffold-promotion-check.sh` takes `--validate-file` and
+  an arbitrary `--validate-target` rather than assuming a fixed script/target
+  pair;
 - live model calls, GCP hosts, credentials, and downstream validation commands
   remain operator-local concerns;
 - learned routing, branch-tournament benchmarks, and extracting this into a
@@ -109,10 +112,15 @@ migration:
 - **Later**, `nixos-config` consumes this repo as a flake input (see
   [`flake.nix`](flake.nix)) and deletes its local copies at that point.
 
-Because it's a snapshot, the carried-over skills and scripts still contain
-`nixos-config`-specific references (e.g. `scripts/validate.sh`,
-`nix-verification-loop`, `lib/invariants.nix`). Genericizing those — splitting
-"engine" from "consumer-local config" — is the first v2 work item.
+Because it's a snapshot, the carried-over skills and scripts originally
+hardcoded `nixos-config`-specific references (`scripts/validate.sh`,
+`nix-verification-loop`, `lib/invariants.nix`) as if they were generic.
+Splitting "engine" from "consumer-local config" was the first v2 work item;
+skills and tooling now treat those as consumer-local conventions to point at
+(configurable, described conditionally) rather than assumptions baked into
+the provider surface. `nix-verification-loop` and `lib/invariants.nix`
+themselves are still nixos-config-only artifacts and are not part of this
+repo (see the note on Nix-specific skills below).
 
 ## Layout
 
