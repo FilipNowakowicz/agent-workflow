@@ -58,6 +58,20 @@
 #   AGENT_CLAUDE_CMD
 #                   Claude command to execute (default: claude). Tests can
 #                   point this at a local fixture worker.
+#   AGENT_CLAUDE_SKIP_PERMISSIONS
+#                   when 1 (the default), pass --dangerously-skip-permissions
+#                   to the per-issue headless session, same as the quota
+#                   preflight already does. Without it, a non-interactive
+#                   `claude -p` session has no way to answer tool-use
+#                   permission prompts and silently does nothing for the
+#                   whole timeout while still exiting 0 (observed in dogfood
+#                   run 2026-07-23, issue #46: rc=0, no branch, no PR). This
+#                   is safe here because the loop's actual trust boundary is
+#                   documented in docs/gcp-issue-loop.md (never merges/pushes
+#                   to BASE_BRANCH, agent:ready is human-gated), not per-tool
+#                   prompts inside a disposable session. Set to 0 to fall
+#                   back to host-level pre-approved permission settings
+#                   instead.
 #   AGENT_INNER_TIMEOUT_SECONDS
 #                   max seconds for one inner Claude issue session before it
 #                   is terminated and recorded as a timeout failure
@@ -102,6 +116,7 @@ AGENT_OUTCOME_DIR="${AGENT_OUTCOME_DIR:-.agents/state/outcomes}"
 AGENT_SESSION_DIR="${AGENT_SESSION_DIR:-.agents/state/sessions}"
 AGENT_REQUIRE_READY="${AGENT_REQUIRE_READY:-1}"
 AGENT_CLAUDE_CMD="${AGENT_CLAUDE_CMD:-claude}"
+AGENT_CLAUDE_SKIP_PERMISSIONS="${AGENT_CLAUDE_SKIP_PERMISSIONS:-1}"
 AGENT_INNER_TIMEOUT_SECONDS="${AGENT_INNER_TIMEOUT_SECONDS:-900}"
 AGENT_MAX_TURNS="${AGENT_MAX_TURNS:-100}"
 AGENT_HEARTBEAT_SECONDS="${AGENT_HEARTBEAT_SECONDS:-60}"
@@ -782,6 +797,20 @@ Treat these as reviewed context to verify against the current tree, not as a sub
   printf '%s' "$prompt"
 }
 
+# Argv (one per line, excluding the leading claude binary) for the per-issue
+# headless session. A pure function of the current env knobs so self-test can
+# assert its exact contents without a real claude/gh session.
+build_claude_args() {
+  local prompt="$1"
+  printf '%s\n' -p "$prompt" --output-format stream-json --verbose
+  if [[ $AGENT_MAX_TURNS -gt 0 ]]; then
+    printf '%s\n' --max-turns "$AGENT_MAX_TURNS"
+  fi
+  if [[ $AGENT_CLAUDE_SKIP_PERMISSIONS == 1 ]]; then
+    printf '%s\n' --dangerously-skip-permissions
+  fi
+}
+
 self_test() {
   local tmp repo bin out rc old_timeout old_heartbeat old_grace old_learning_limit old_learning_budget
   tmp=$(mktemp -d)
@@ -874,6 +903,15 @@ EOF
     die "self-test: dirty worktree must not classify as post-PR timeout"
   fi
   rm -f dirty.txt
+
+  # --- exit-0-but-no-PR sessions are not silently treated as done (#46) ---
+  # linked_pr_count is the reclassification's only signal: it must report 0
+  # for an issue with no matching PR (e.g. a session that stayed on
+  # BASE_BRANCH and never opened one) and >0 once one exists.
+  [[ $(linked_pr_count 12345 "$BASE_BRANCH") == 0 ]] ||
+    die "self-test: linked_pr_count must be 0 for an issue with no matching PR"
+  [[ $(linked_pr_count 999 codex/clean-pr) -gt 0 ]] ||
+    die "self-test: linked_pr_count must find the PR referencing '#999 in:body'"
 
   # --- claude quota/auth preflight classifier (#319 / #259) ---
   local pf_ok pf_limit pf_rate pf_auth
@@ -1207,6 +1245,27 @@ EOF
     die "self-test: dispatch prompt missing the subagent-isolation instruction"
   [[ $base_prompt == *"out of this session's transcript entirely"* ]] ||
     die "self-test: dispatch prompt missing the subagent-isolation rationale"
+
+  # --- per-issue claude argv includes --dangerously-skip-permissions by default (#46) ---
+  local -a args_default args_no_skip args_zero_turns
+  mapfile -t args_default < <(build_claude_args "test prompt")
+  printf '%s\0' "${args_default[@]}" | grep -zqx -- '--dangerously-skip-permissions' ||
+    die "self-test: build_claude_args must include --dangerously-skip-permissions by default (got: ${args_default[*]})"
+
+  AGENT_CLAUDE_SKIP_PERMISSIONS=0
+  mapfile -t args_no_skip < <(build_claude_args "test prompt")
+  AGENT_CLAUDE_SKIP_PERMISSIONS=1
+  if printf '%s\0' "${args_no_skip[@]}" | grep -zqx -- '--dangerously-skip-permissions'; then
+    die "self-test: AGENT_CLAUDE_SKIP_PERMISSIONS=0 must omit --dangerously-skip-permissions (got: ${args_no_skip[*]})"
+  fi
+
+  local old_max_turns="$AGENT_MAX_TURNS"
+  AGENT_MAX_TURNS=0
+  mapfile -t args_zero_turns < <(build_claude_args "test prompt")
+  AGENT_MAX_TURNS="$old_max_turns"
+  if printf '%s\0' "${args_zero_turns[@]}" | grep -zqx -- '--max-turns'; then
+    die "self-test: AGENT_MAX_TURNS=0 must omit --max-turns (got: ${args_zero_turns[*]})"
+  fi
 
   # --- positional issue argument validation (#11) ---
   set +e
@@ -1574,10 +1633,8 @@ run_one() {
 
   # --max-turns is a hard backstop on the turn-count quadratic that the
   # wall-clock timeout does not bound; 0 disables it.
-  local -a claude_args=(-p "$prompt" --output-format stream-json --verbose)
-  if [[ $AGENT_MAX_TURNS -gt 0 ]]; then
-    claude_args+=(--max-turns "$AGENT_MAX_TURNS")
-  fi
+  local -a claude_args
+  mapfile -t claude_args < <(build_claude_args "$prompt")
 
   status=success
   exit_code=0
@@ -1629,6 +1686,21 @@ run_one() {
 
   finished_at=$(utc_now)
   outcome_head_branch=$(git symbolic-ref --short HEAD 2>/dev/null || printf 'DETACHED')
+
+  # A session that exits 0 but never left BASE_BRANCH and opened no PR did no
+  # real work — most often a headless session silently blocked on tool-use
+  # permission prompts and gave up (dogfood run 2026-07-23, issue #46: exit 0,
+  # head_branch=main, prs=[]). Recording that as "success" hides a real
+  # failure from outcome stats and the issue comment; reclassify it as a
+  # failure with a specific, actionable blocker instead.
+  if [[ $status == success && $outcome_head_branch == "$BASE_BRANCH" ]]; then
+    if [[ $(linked_pr_count "$issue" "$outcome_head_branch") == 0 ]]; then
+      status=failure
+      exit_code=1
+      blocker="claude session exited 0 but never left ${BASE_BRANCH} and opened no PR for this issue; likely blocked on tool-use permission prompts in headless mode (see AGENT_CLAUDE_SKIP_PERMISSIONS) or gave up silently — inspect $session_log"
+      echo "agent-run-issue: issue #$issue exited 0 with no branch or PR; reclassifying as failure (see blocker)" >&2
+    fi
+  fi
 
   # If we are about to record a failure but the session pushed a clean, PR-less
   # agent branch (cap/timeout struck between push and `gh pr create`), auto-open
