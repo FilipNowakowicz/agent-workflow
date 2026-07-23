@@ -59,7 +59,12 @@ this to a different repo or host:
   `AGENT_REPO_DIR` is not already a clone — there is no baked-in default
   repo), `BASE_BRANCH`, `AGENT_VERIFICATION_GUIDANCE` (how the dispatched
   session should validate its change — set this to your repo's actual
-  test/build/verification command), `AGENT_RUNNER_LABEL`.
+  test/build/verification command), `AGENT_RUNNER_LABEL`,
+  `AGENT_CLAUDE_SKIP_PERMISSIONS` (default `1`: pass
+  `--dangerously-skip-permissions` to the per-issue headless session, since a
+  non-interactive session otherwise has no way to answer tool-use permission
+  prompts and silently does nothing for the whole run while still exiting 0;
+  set to `0` to rely on host-level pre-approved permission settings instead).
 - `agent-review-pr.sh`: `AGENT_CLAUDE_CMD`, `AGENT_REVIEW_MODEL`.
 
 ## Trust boundary
