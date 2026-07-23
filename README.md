@@ -158,22 +158,26 @@ deliberately stay in `nixos-config` — they're welded to that repo's
 
 ## How much of PLAN.md already exists
 
-The `scripts/` control plane already implements a large slice of the roadmap:
-issue readiness (`agent-issue-readiness`), routing (`agent-route`),
-policy evaluation (`agent-policy-eval`), reviewer-evidence checking
-(`agent-review-evidence-check`), outcome recording + stats
+The `scripts/` control plane already implements PLAN.md's Final Priority Order
+(§26) through item 12: issue readiness (`agent-issue-readiness`), routing
+(`agent-route`), policy evaluation (`agent-policy-eval`), reviewer-evidence
+checking (`agent-review-evidence-check`), outcome recording + stats
 (`agent-record-outcome`, `agent-outcome-*`), dispatch (`agent-dispatch`),
-liveness (`agent-liveness-gate`), and the weekly digest
-(`agent-weekly-digest`). v2 is about hardening and connecting these, not
-starting from zero.
+liveness (`agent-liveness-gate`), freeze/quarantine (`agent-freeze`), the
+weekly digest (`agent-weekly-digest`), and adversarial canaries (`canaries/`,
+`agent-canary-check`). Items 13-15 (learned routing, branch-tournament
+benchmarks, extracting a separate agent-loop repo) are deliberately not
+started — they need accumulated outcome telemetry this repo hasn't generated
+through real dogfood runs yet.
 
 ## Learning candidates
 
-`learning/candidates/` holds two open candidates that are genuine active
-backlog for this repo's own control-plane code. The rest of the
-`nixos-config`-seeded queue has been curated (issue #29): resolved or
-not-applicable items moved to `learning/candidates/archive/`, and one strong
-capture kept at `learning/examples/captured-candidate/` purely as a public
-example of the candidate format. See
+`learning/candidates/` currently has no open candidates: the `nixos-config`-
+seeded queue was curated (issue #29) into `learning/candidates/archive/`
+(resolved, not-applicable, or superseded items), and the two that were
+genuine active backlog for this repo's own control-plane code have since been
+implemented and archived as `promoted` (`fix-pr: 42`). One strong capture is
+kept at `learning/examples/captured-candidate/` purely as a public example of
+the candidate format. See
 [`learning/README.md`](learning/README.md#candidate-status-in-this-provider-repo)
 for the full breakdown.
