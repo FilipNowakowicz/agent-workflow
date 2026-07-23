@@ -34,6 +34,7 @@ bash learning/scripts/validate-candidates.sh --self-test
 bash learning/scripts/index-candidates.sh --self-test
 bash learning/scripts/scaffold-promotion-check.sh --self-test
 bash learning/scripts/check-candidate-liveness.sh --self-test
+bash learning/scripts/query-candidates.sh --self-test
 bash repo-map/scripts/validate.sh
 bash install.sh --self-test
 ```
