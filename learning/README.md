@@ -52,14 +52,16 @@ work, using the `capture-learning-candidate` skill. The bar is high and the act
 is cheap: a candidate is a structured _proposal_, reviewed later, so it must
 never edit instructions directly.
 
-A shared `Stop` hook (`.claude/hooks/learning-nudge.sh`, wired for Claude in
-`.claude/settings.json` and for Codex in `.codex/hooks.json`) gives a
-_one-time, non-binding_ reflection prompt only when the transcript shows both a
-file edit and high-signal learning evidence such as a failed check, CI/deploy
-failure, merge conflict, explicit bypass, or user correction. It asks whether a
-lesson is worth capturing and explicitly accepts "nothing qualified." It never
-forces a candidate, fires at most once per session, and stays silent on
-pure-conversation or routine-success turns.
+A consumer repo can wire an optional shared `Stop` hook (e.g.
+`.claude/hooks/learning-nudge.sh` for Claude, an equivalent for Codex) that
+gives a _one-time, non-binding_ reflection prompt only when the transcript
+shows both a file edit and high-signal learning evidence such as a failed
+check, CI/deploy failure, merge conflict, explicit bypass, or user correction.
+It should ask whether a lesson is worth capturing and explicitly accept
+"nothing qualified," never force a candidate, fire at most once per session,
+and stay silent on pure-conversation or routine-success turns. This repo does
+not ship that hook itself (see `.claude/hooks/` for what is actually wired
+here); it is a pattern to adopt if a consumer wants automatic nudges.
 
 Capture must not scan `.agents/learning/candidates/`. Use
 `scripts/query-candidates.sh` and open at most the likely duplicate candidates
@@ -72,10 +74,11 @@ prose only _asks_ a future agent to remember. A lesson written as an executable
 check _makes the mistake impossible_ and stays correct because it fails loudly
 when the repo changes underneath it. Prefer, in order:
 
-1. **assertion / test / CI gate** — `lib/invariants.nix`, a NixOS assertion, a
-   profile/package/smoke test, a `scripts/validate.sh` check. Self-checking:
+1. **assertion / test / CI gate** — an invariant/assertion (e.g. a NixOS
+   assertion for a Nix-based consumer), a profile/package/smoke test, or a
+   check wired into the consumer repo's own validation entrypoint. Self-checking:
    `merge-gate` is the reviewer.
-2. **hook** — `.claude/hooks/*` (shared with Codex via `.codex/hooks.json`).
+2. **hook** — `.claude/hooks/*` (and an equivalent for Codex, if used).
 3. **skill** — `.agents/skills/*`, loaded on demand.
 4. **CLAUDE.md prose** — last resort. Permanent context-budget tax on every
    future invocation, and no safety net if it goes stale. Reserve for genuine

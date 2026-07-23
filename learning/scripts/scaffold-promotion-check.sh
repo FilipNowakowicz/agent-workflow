@@ -5,13 +5,15 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  scaffold-promotion-check.sh --candidate <path> --check-name <slug> [--validate-target docs|light] [--output-dir <repo>]
+  scaffold-promotion-check.sh --candidate <path> --check-name <slug> --validate-target <slug> [--validate-file <path>] [--output-dir <repo>]
   scaffold-promotion-check.sh --self-test
 
 Creates:
   .agents/learning/promotions/<slug>.sh
 
-and wires it into scripts/validate.sh under the chosen validation target. The
+and wires it into the consumer repo's own validation entrypoint (default
+scripts/validate.sh, override with --validate-file) under the chosen
+validation target — an existing `<target>)` case label in that file. The
 generated check intentionally exits 1 with a TODO until the reviewer replaces
 the body with the real assertion.
 EOF
@@ -63,13 +65,11 @@ scaffold() {
   local check_name="$2"
   local validate_target="$3"
   local output_dir="$4"
+  local validate_file_rel="$5"
 
   [[ -f $candidate ]] || die "candidate not found: $candidate"
   slug_ok "$check_name" || die "--check-name must be a slug matching [a-z0-9][a-z0-9_-]*"
-  case "$validate_target" in
-  docs | light) ;;
-  *) die "--validate-target must be docs or light" ;;
-  esac
+  slug_ok "$validate_target" || die "--validate-target must be a slug matching [a-z0-9][a-z0-9_-]*"
 
   local status route best_form id dedupe evidence candidate_ref promotions_dir check_path validate_file command_line
   status=$(field "$candidate" status)
@@ -89,7 +89,7 @@ scaffold() {
   output_dir=${output_dir%/}
   promotions_dir="$output_dir/.agents/learning/promotions"
   check_path="$promotions_dir/${check_name}.sh"
-  validate_file="$output_dir/scripts/validate.sh"
+  validate_file="$output_dir/$validate_file_rel"
   candidate_ref="$candidate"
   if [[ $candidate == "$output_dir/"* ]]; then
     candidate_ref="${candidate#"$output_dir/"}"
@@ -112,7 +112,7 @@ dedupe_key: ${dedupe:-unknown}
 evidence: ${evidence:-unknown}
 
 Replace this body with an assertion that fails when the learned regression is
-possible again, then keep this script wired into scripts/validate.sh.
+possible again, then keep this script wired into ${validate_file_rel}.
 TODO
 exit 1
 EOF
@@ -129,7 +129,7 @@ self_test() {
   tmp=$(mktemp -d)
   trap 'rm -rf "$tmp"' RETURN
 
-  mkdir -p "$tmp/.agents/learning/candidates/archive" "$tmp/scripts"
+  mkdir -p "$tmp/.agents/learning/candidates/archive" "$tmp/tools"
   cat >"$tmp/.agents/learning/candidates/archive/example.yml" <<'EOF'
 schema: learning-candidate/v1
 id: example-promoted-check
@@ -139,32 +139,31 @@ best_form: test
 dedupe_key: example:check
 evidence: [PR-#1]
 EOF
-  cat >"$tmp/scripts/validate.sh" <<'EOF'
+  # Deliberately a non-"docs"/"light" validate file and target name, to prove
+  # this tool has no consumer-specific convention baked in.
+  cat >"$tmp/tools/check.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 command="${1:-}"
 case "$command" in
-docs)
-  echo docs-ok
-  ;;
-light)
-  echo light-ok
+shellcheck)
+  echo shellcheck-ok
   ;;
 esac
 EOF
-  chmod +x "$tmp/scripts/validate.sh"
+  chmod +x "$tmp/tools/check.sh"
 
   candidate="$tmp/.agents/learning/candidates/archive/example.yml"
-  out=$(scaffold "$candidate" "example-check" "docs" "$tmp")
+  out=$(scaffold "$candidate" "example-check" "shellcheck" "$tmp" "tools/check.sh")
   [[ $out == "$tmp/.agents/learning/promotions/example-check.sh" ]] ||
     die "self-test: unexpected scaffold path: $out"
-  grep -Fqx '  bash .agents/learning/promotions/example-check.sh' "$tmp/scripts/validate.sh" ||
-    die "self-test: validate.sh wiring was not inserted"
+  grep -Fqx '  bash .agents/learning/promotions/example-check.sh' "$tmp/tools/check.sh" ||
+    die "self-test: validate-file wiring was not inserted"
   grep -Fq 'candidate: .agents/learning/candidates/archive/example.yml' "$out" ||
     die "self-test: generated check missing candidate back-reference"
 
   set +e
-  (cd "$tmp" && bash scripts/validate.sh docs >/tmp/scaffold-promotion-check-test.log 2>&1)
+  (cd "$tmp" && bash tools/check.sh shellcheck >/tmp/scaffold-promotion-check-test.log 2>&1)
   rc=$?
   set -e
   [[ $rc -ne 0 ]] || die "self-test: generated TODO check must fail until implemented"
@@ -176,7 +175,8 @@ EOF
 
 candidate=""
 check_name=""
-validate_target="docs"
+validate_target=""
+validate_file="scripts/validate.sh"
 output_dir="."
 self_test=0
 
@@ -191,7 +191,11 @@ while [[ $# -gt 0 ]]; do
     shift 2
     ;;
   --validate-target)
-    validate_target="${2:?--validate-target needs docs or light}"
+    validate_target="${2:?--validate-target needs a slug}"
+    shift 2
+    ;;
+  --validate-file)
+    validate_file="${2:?--validate-file needs a path}"
     shift 2
     ;;
   --output-dir)
@@ -219,4 +223,5 @@ fi
 
 [[ -n $candidate ]] || die "--candidate is required"
 [[ -n $check_name ]] || die "--check-name is required"
-scaffold "$candidate" "$check_name" "$validate_target" "$output_dir"
+[[ -n $validate_target ]] || die "--validate-target is required"
+scaffold "$candidate" "$check_name" "$validate_target" "$output_dir" "$validate_file"

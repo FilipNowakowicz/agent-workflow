@@ -18,13 +18,14 @@ File a candidate only when **all** hold:
 - The lesson is **reusable** across future sessions, not a one-off fact.
 - You have **verifiable evidence** (commit, `file:line`, failing check output,
   or a direct user correction).
-- It is **not already** encoded in `CLAUDE.md`, `lib/invariants.nix`, a test, a
-  hook, or an existing skill.
+- It is **not already** encoded in `CLAUDE.md`, an invariant/assertion, a
+  test, a hook, or an existing skill.
 
-Strong triggers: a user correction of how you worked; a validation gate
-(`scripts/validate.sh`, `merge-gate`) catching something a careful agent would
-have avoided; a non-obvious repo gotcha you only learned by hitting it; or a
-repo/CI fix that should become a durable check, hook, skill, or doc update.
+Strong triggers: a user correction of how you worked; a validation gate (the
+consumer repo's own check/build script, `merge-gate`) catching something a
+careful agent would have avoided; a non-obvious repo gotcha you only learned
+by hitting it; or a repo/CI fix that should become a durable check, hook,
+skill, or doc update.
 
 ## When NOT to capture
 
@@ -59,8 +60,8 @@ Prefer **fewer, higher-signal** candidates. Skipping is the default.
 
 ## Guardrails
 
-- **Never** edit `CLAUDE.md`, skills, hooks, or `lib/invariants.nix` as part of
-  capture. Promotion is a separate, reviewed step.
+- **Never** edit `CLAUDE.md`, skills, hooks, or invariants/assertions as part
+  of capture. Promotion is a separate, reviewed step.
 - Never read all candidates to dedupe. The index/query helper is the routing
   surface for normal capture.
 - Never put secrets, tokens, or host-specific credentials in a candidate.

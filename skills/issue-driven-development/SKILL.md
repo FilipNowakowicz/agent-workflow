@@ -88,20 +88,20 @@ If the source item is still vague, use `issue-tdd` first.
 ## Repo-Specific Notes
 
 - Preserve user-owned planning/status docs unless explicitly asked to rewrite them.
-- For this git-backed flake, stage newly created files before Nix eval/build checks
-  that need to see them.
+- If the consumer repo is a Nix flake, stage newly created files before Nix
+  eval/build checks that need to see them — Nix only evaluates tracked/staged
+  files.
 - Do not include `Co-Authored-By` trailers.
 - Before launching an `isolation: "worktree"` subagent for issue/subagent work,
   commit or stash any intentional edits in the primary checkout first.
   Worktree isolation protects files the subagent writes, but the subagent
   shares this checkout's `.git` — a `git reset`/`checkout`/`clean` it runs
-  against this checkout's path can still destroy staged/unstaged edits here
-  (see learning candidate
-  `2026-06-08-worktree-subagent-reset-clobbers-shared-checkout`). The repo's
-  `.claude/hooks/guard-agent-dirty-checkout.sh` warns before such a spawn if
-  this checkout has uncommitted, non-generated changes. When dispatching the
-  subagent, explicitly tell it to operate only inside its assigned worktree
-  path and never run git commands against the primary checkout.
+  against this checkout's path can still destroy staged/unstaged edits here.
+  If the repo has a guard hook that warns before such a spawn when the
+  checkout has uncommitted, non-generated changes, rely on it; otherwise check
+  by hand. When dispatching the subagent, explicitly tell it to operate only
+  inside its assigned worktree path and never run git commands against the
+  primary checkout.
 - For sequential/stacked `isolation: "worktree"` dispatches (e.g. issue #300's
   subagent finishing before issue #301's is spawned, with #301 building on
   #300's branch), record the primary checkout's current branch and commit
@@ -115,9 +115,9 @@ If the source item is still vague, use `issue-tdd` first.
   touches the primary checkout's working-tree files and reports success (see
   learning candidate
   `2026-06-15-worktree-subagent-leaves-primary-checkout-on-foreign-branch`).
-- Goals/roadmap cleanup checklist (e.g. `docs/goals/roadmap.md`,
-  `docs/goals/*-goals.md`): remove shipped history, but first identify a
-  durable-doc home for anything worth keeping (architecture/operations docs)
-  before deleting it; keep only forward-looking items; `rg` for cross-references
-  to removed sections from other goals/roadmap docs and update or drop them;
-  then run `bash scripts/validate.sh docs`.
+- Goals/roadmap cleanup checklist (for whatever planning docs the consumer
+  repo keeps, e.g. a `docs/goals/` tree): remove shipped history, but first
+  identify a durable-doc home for anything worth keeping (architecture/
+  operations docs) before deleting it; keep only forward-looking items; `rg`
+  for cross-references to removed sections from other planning docs and
+  update or drop them; then run the repo's own doc-validation check, if any.
