@@ -82,6 +82,7 @@ build_index() {
     fi
 
     [ -n "$id" ] || id=$(basename "$path")
+    [ -n "$status" ] || status=unknown
 
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
       "$path" "$id" "$status" "$expires" "$type" "$route" "$best_form" \
@@ -186,6 +187,17 @@ EOF
   out=$(build_index "$tmp/missing-id")
   row=$(row_for "$out" no-id.yml)
   [ -n "$row" ] || die "self-test: missing-id candidate did not fall back to basename"
+
+  # Case 4b: candidate file missing status -> status column falls back to
+  # "unknown" (not empty), matching the id-fallback behavior above.
+  mkdir -p "$tmp/missing-status/candidates"
+  cat >"$tmp/missing-status/candidates/no-status.yml" <<'EOF'
+id: cand-no-status
+EOF
+  out=$(build_index "$tmp/missing-status")
+  row=$(row_for "$out" cand-no-status)
+  [ -n "$row" ] || die "self-test: missing-status candidate produced no row"
+  [ "$(col "$row" 3)" = "unknown" ] || die "self-test: missing status column should default to 'unknown' (got: $(col "$row" 3))"
 
   # Case 5: missing candidates/ directory -> only the header line, exit 0.
   local rc
