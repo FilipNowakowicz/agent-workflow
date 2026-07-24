@@ -94,10 +94,11 @@ provider repo. It is not yet a turnkey product. In particular:
   pair;
 - live model calls, GCP hosts, credentials, and downstream validation commands
   remain operator-local concerns;
-- learned routing, branch-tournament benchmarks, and extracting this into a
-  separate agent-loop repo (PLAN.md's final priority items) are deliberately
-  not started yet — they need accumulated outcome telemetry this repo hasn't
-  generated through real dogfood runs.
+- learned routing (PLAN.md item 13) has its stats/annotation machinery built
+  and, as of the first real dogfood runs, validated against real outcome
+  telemetry — see below. Branch-tournament benchmarks and extracting this
+  into a separate agent-loop repo (items 14-15) remain deliberately deferred,
+  per PLAN.md's own token-budget and dogfood-mileage guidance.
 
 ## Status: v2 development space (seeded snapshot)
 
@@ -165,10 +166,24 @@ checking (`agent-review-evidence-check`), outcome recording + stats
 (`agent-record-outcome`, `agent-outcome-*`), dispatch (`agent-dispatch`),
 liveness (`agent-liveness-gate`), freeze/quarantine (`agent-freeze`), the
 weekly digest (`agent-weekly-digest`), and adversarial canaries (`canaries/`,
-`agent-canary-check`). Items 13-15 (learned routing, branch-tournament
-benchmarks, extracting a separate agent-loop repo) are deliberately not
-started — they need accumulated outcome telemetry this repo hasn't generated
-through real dogfood runs yet.
+`agent-canary-check`).
+
+Item 13 (learned routing) has real outcome-stats aggregation
+(`agent-outcome-stats`) and advisory annotation of route decisions
+(`agent-route --outcome-dir`, surfacing `path_class_stats` in JSON output)
+already built and self-tested. Its first run against real accumulated
+telemetry (33 records from actual dispatch runs) found and fixed one
+concrete issue: the `nix-modules` path class had a 36% failure rate, every
+instance an inner-session timeout, not a code-quality problem — fixed by
+raising the default `AGENT_INNER_TIMEOUT_SECONDS`. What's still not built is
+the deeper loop — policy or dispatch actually changing a decision based on
+`path_class_stats` — deliberately deferred: the one class with a real signal
+still has only ~11 samples, too thin to justify an automatic policy change
+yet.
+
+Items 14-15 (branch-tournament benchmarks, extracting a separate agent-loop
+repo) remain deliberately not started, per PLAN.md's own guidance on token
+budget and dogfood mileage.
 
 ## Learning candidates
 
