@@ -75,7 +75,14 @@
 #   AGENT_INNER_TIMEOUT_SECONDS
 #                   max seconds for one inner Claude issue session before it
 #                   is terminated and recorded as a timeout failure
-#                   (default: 900; 0 disables).
+#                   (default: 1800; 0 disables). Raised from 900 after real
+#                   dogfood data (agent-outcome-stats against 33 accumulated
+#                   records, 2026-07-24) showed every nix-modules-path-class
+#                   failure was an exit-124 timeout at the old ceiling (4/11
+#                   real attempts), with zero timeouts anywhere else — nix
+#                   builds/evaluations are legitimately slower, not lower
+#                   quality. Global bump is safe: sessions that finish well
+#                   under 900s aren't affected by a higher ceiling.
 #   AGENT_MAX_TURNS
 #                   hard turn ceiling passed to `claude -p --max-turns`.
 #                   AGENT_INNER_TIMEOUT_SECONDS only caps wall-clock time; a
@@ -117,7 +124,7 @@ AGENT_SESSION_DIR="${AGENT_SESSION_DIR:-.agents/state/sessions}"
 AGENT_REQUIRE_READY="${AGENT_REQUIRE_READY:-1}"
 AGENT_CLAUDE_CMD="${AGENT_CLAUDE_CMD:-claude}"
 AGENT_CLAUDE_SKIP_PERMISSIONS="${AGENT_CLAUDE_SKIP_PERMISSIONS:-1}"
-AGENT_INNER_TIMEOUT_SECONDS="${AGENT_INNER_TIMEOUT_SECONDS:-900}"
+AGENT_INNER_TIMEOUT_SECONDS="${AGENT_INNER_TIMEOUT_SECONDS:-1800}"
 AGENT_MAX_TURNS="${AGENT_MAX_TURNS:-100}"
 AGENT_HEARTBEAT_SECONDS="${AGENT_HEARTBEAT_SECONDS:-60}"
 AGENT_INNER_KILL_GRACE_SECONDS="${AGENT_INNER_KILL_GRACE_SECONDS:-15}"
