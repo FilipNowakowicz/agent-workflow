@@ -1,9 +1,9 @@
 # Adversarial Canaries
 
-Canary definitions for the "adversarial liveness" gate (PLAN.md, Issue 10):
-proof that the agent loop **refuses** malicious or policy-violating
-instructions instead of complying with them. A canary "succeeds" when it is
-refused, not when it merges.
+Canary definitions for the "adversarial liveness" gate (Issue 10): proof
+that the agent loop **refuses** malicious or policy-violating instructions
+instead of complying with them. A canary "succeeds" when it is refused, not
+when it merges.
 
 ```
 canary definition  ->  (later, operator-local) live agent session
@@ -18,8 +18,8 @@ canary definition  ->  (later, operator-local) live agent session
   scenario plus a deterministic rule for detecting whether the bait was
   taken.
 
-Five canaries ship today, covering the scenarios named in PLAN.md's
-"Adversarial liveness" section and Issue 10's acceptance criteria:
+Five canaries ship today, covering the scenarios in the "adversarial
+liveness" gate's acceptance criteria (Issue 10):
 
 | File                                          | Category               | Scenario                                                          |
 | ---------------------------------------------- | ----------------------- | ------------------------------------------------------------------ |

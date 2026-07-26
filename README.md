@@ -5,8 +5,10 @@ orchestration, control-plane scripts, schemas, and a learning loop for driving
 coding agents from high-level goals to reviewed PRs — with autonomy *earned from
 telemetry* and *bounded by deterministic policy*.
 
-The full vision and roadmap live in [`PLAN.md`](PLAN.md); the endgame analysis
-and the provider/consumer extraction reasoning live in
+Design principles and working conventions for agents in this repo live in
+[`CLAUDE.md`](CLAUDE.md); deferred/future work lives in
+[`docs/backlog.md`](docs/backlog.md). The endgame analysis and the
+provider/consumer extraction reasoning live in
 [`docs/endgame-analysis.md`](docs/endgame-analysis.md). The provider-vs-
 installed filesystem contract is documented in
 [`docs/provider-consumer-layout.md`](docs/provider-consumer-layout.md). CI and
@@ -94,11 +96,11 @@ provider repo. It is not yet a turnkey product. In particular:
   pair;
 - live model calls, GCP hosts, credentials, and downstream validation commands
   remain operator-local concerns;
-- learned routing (PLAN.md item 13) has its stats/annotation machinery built
-  and, as of the first real dogfood runs, validated against real outcome
-  telemetry — see below. Branch-tournament benchmarks and extracting this
-  into a separate agent-loop repo (items 14-15) remain deliberately deferred,
-  per PLAN.md's own token-budget and dogfood-mileage guidance.
+- learned routing has its stats/annotation machinery built and, as of the
+  first real dogfood runs, validated against real outcome telemetry — see
+  below. Branch-tournament benchmarks and extracting this into a separate
+  agent-loop repo remain deliberately deferred — see
+  [`docs/backlog.md`](docs/backlog.md) for the trigger conditions.
 
 ## Status: v2 development space (seeded snapshot)
 
@@ -108,8 +110,9 @@ migration:
 
 - The `nixos-config` repo keeps running its loop off its own local copies,
   **untouched**, as v1.
-- This repo is where **v2 is built** — free to refactor toward the PLAN.md
-  control plane without risking the live infra.
+- This repo is where **v2 is built** — free to refactor toward the target
+  control plane described in [`CLAUDE.md`](CLAUDE.md) without risking the
+  live infra.
 - **Later**, `nixos-config` consumes this repo as a flake input (see
   [`flake.nix`](flake.nix)) and deletes its local copies at that point.
 
@@ -157,33 +160,31 @@ Nix-specific skills (`nix-verification-loop`, `nix-review-ledger-batch`)
 deliberately stay in `nixos-config` — they're welded to that repo's
 `validate.sh` and conventions, not part of the generic engine.
 
-## How much of PLAN.md already exists
+## How much is built
 
-The `scripts/` control plane already implements PLAN.md's Final Priority Order
-(§26) through item 12: issue readiness (`agent-issue-readiness`), routing
-(`agent-route`), policy evaluation (`agent-policy-eval`), reviewer-evidence
-checking (`agent-review-evidence-check`), outcome recording + stats
+The `scripts/` control plane already implements: issue readiness
+(`agent-issue-readiness`), routing (`agent-route`), policy evaluation
+(`agent-policy-eval`), reviewer-evidence checking
+(`agent-review-evidence-check`), outcome recording + stats
 (`agent-record-outcome`, `agent-outcome-*`), dispatch (`agent-dispatch`),
 liveness (`agent-liveness-gate`), freeze/quarantine (`agent-freeze`), the
 weekly digest (`agent-weekly-digest`), and adversarial canaries (`canaries/`,
 `agent-canary-check`).
 
-Item 13 (learned routing) has real outcome-stats aggregation
-(`agent-outcome-stats`) and advisory annotation of route decisions
-(`agent-route --outcome-dir`, surfacing `path_class_stats` in JSON output)
-already built and self-tested. Its first run against real accumulated
-telemetry (33 records from actual dispatch runs) found and fixed one
-concrete issue: the `nix-modules` path class had a 36% failure rate, every
-instance an inner-session timeout, not a code-quality problem — fixed by
-raising the default `AGENT_INNER_TIMEOUT_SECONDS`. What's still not built is
-the deeper loop — policy or dispatch actually changing a decision based on
-`path_class_stats` — deliberately deferred: the one class with a real signal
-still has only ~11 samples, too thin to justify an automatic policy change
-yet.
+Learned routing has real outcome-stats aggregation (`agent-outcome-stats`)
+and advisory annotation of route decisions (`agent-route --outcome-dir`,
+surfacing `path_class_stats` in JSON output) already built and self-tested.
+Its first run against real accumulated telemetry (33 records from actual
+dispatch runs) found and fixed one concrete issue: the `nix-modules` path
+class had a 36% failure rate, every instance an inner-session timeout, not a
+code-quality problem — fixed by raising the default
+`AGENT_INNER_TIMEOUT_SECONDS`. What's still not built is the deeper loop —
+policy or dispatch actually changing a decision based on
+`path_class_stats` — deliberately deferred; see
+[`docs/backlog.md`](docs/backlog.md) for why and what would trigger it.
 
-Items 14-15 (branch-tournament benchmarks, extracting a separate agent-loop
-repo) remain deliberately not started, per PLAN.md's own guidance on token
-budget and dogfood mileage.
+Branch-tournament benchmarks and extracting a separate agent-loop repo also
+remain deliberately not started — see [`docs/backlog.md`](docs/backlog.md).
 
 ## Learning candidates
 
