@@ -74,7 +74,8 @@ yet.
 - **Schemas** (`schemas/`): JSON contracts for outcome records and reviewer
   evidence.
 - **Repo map** (`repo-map/`): lightweight indexing and query helpers for
-  finding likely files before broad exploration.
+  finding likely files before broad exploration, plus a co-change lookup for
+  blast-radius awareness before editing a file.
 - **Canaries** (`canaries/`): adversarial canary definitions and a
   deterministic checker proving refusal, not just deterministic diffs, is
   covered.
