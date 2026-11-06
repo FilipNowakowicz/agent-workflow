@@ -143,7 +143,7 @@ read_changed_paths() {
   local paths_from="$2"
   if [[ -n $git_diff_ref ]]; then
     {
-      git diff --name-only "$git_diff_ref" --
+      git diff --name-only --no-renames "$git_diff_ref" --
       git ls-files --others --exclude-standard
     } | sort -u
   elif [[ -n $paths_from ]]; then
