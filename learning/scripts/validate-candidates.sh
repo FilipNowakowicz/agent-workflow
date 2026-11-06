@@ -8,8 +8,8 @@ Usage:
   validate-candidates.sh [root]
   validate-candidates.sh --self-test
 
-Validates compact-YAML learning candidate files under <root>/candidates
-(default root: .agents/learning).
+Validates compact-YAML learning candidate files under <root>/candidates and
+<root>/candidates/archive (default root: .agents/learning).
 EOF
 }
 
@@ -97,7 +97,13 @@ validate() {
       printf '%s: invalid best_form\n' "$path" >&2
       rc=1
     fi
-  done < <(find "$candidate_dir" -maxdepth 1 -type f ! -name '.gitkeep' | sort)
+  # candidates/archive/ is validated too: promoted archive entries are the
+  # ones whose text is injected into agent prompts, so they must be at least
+  # as well-formed as raw candidates.
+  done < <({
+    find "$candidate_dir" -maxdepth 1 -type f ! -name '.gitkeep'
+    [ -d "$candidate_dir/archive" ] && find "$candidate_dir/archive" -maxdepth 1 -type f ! -name '.gitkeep'
+  } | sort)
 
   return "$rc"
 }
@@ -181,6 +187,21 @@ EOF
   [[ $rc -eq 1 ]] || die "self-test: block-style field should exit 1 (rc=$rc)"
   grep -Fq 'must be single-line compact YAML' <<<"$out" ||
     die "self-test: block-style field was not flagged (got: $out)"
+
+  # Case 5: a malformed entry under candidates/archive/ is flagged (archive
+  # entries feed agent prompts, so they are validated like raw candidates).
+  mkdir -p "$tmp/archive/candidates/archive"
+  cat >"$tmp/archive/candidates/archive/example.yml" <<'EOF'
+schema: learning-candidate/v1
+id: example
+status: promoted
+route: not-a-route
+observation: something happened
+EOF
+  out=$(validate "$tmp/archive" 2>&1) && rc=0 || rc=$?
+  [[ $rc -eq 1 ]] || die "self-test: malformed archive entry should exit 1 (rc=$rc)"
+  grep -Fq 'archive/example.yml' <<<"$out" ||
+    die "self-test: archive entry was not reported (got: $out)"
 
   printf 'validate-candidates self-test passed\n'
 }

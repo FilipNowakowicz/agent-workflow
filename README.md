@@ -77,8 +77,10 @@ yet.
   finding likely files before broad exploration, plus a co-change lookup for
   blast-radius awareness before editing a file.
 - **Canaries** (`canaries/`): adversarial canary definitions and a
-  deterministic checker proving refusal, not just deterministic diffs, is
-  covered.
+  deterministic checker that judges actions (changed paths, added diff lines,
+  tool calls) rather than prose; `scripts/agent-attack-suite` turns the
+  audit's gate bypasses into regression fixtures, and `canaries/live/` holds
+  the operator-run live-agent harness.
 - **Personal skills** (`personal-skills/`): general-purpose skills outside
   this repo's agent-workflow domain, kept here for convenience only. Not
   part of the flake's `paths` output or `install.sh` — see

@@ -35,7 +35,7 @@ Changed-path source (pick at most one; default is stdin):
   --files-from <path>  Read newline-separated paths from <path> ("-" for
                         stdin).
   --git-diff [<ref>]   Use paths changed relative to <ref> (default: HEAD):
-                        "git diff --name-only <ref>" plus untracked files.
+                        "git diff --name-only --no-renames <ref>" plus untracked files.
   (none)               Read newline-separated paths from stdin.
 
 Options:
@@ -202,7 +202,7 @@ git_changed_paths() {
   git rev-parse --verify --quiet "${ref}^{commit}" >/dev/null ||
     die "unknown git ref: $ref"
   {
-    git diff --name-only "$ref" --
+    git diff --name-only --no-renames "$ref" --
     git ls-files --others --exclude-standard
   } | sort -u
 }

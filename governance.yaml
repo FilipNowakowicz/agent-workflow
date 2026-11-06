@@ -43,6 +43,10 @@ rules:
     risk: high
     requires_human_review: true
     reason: "Agent workflow policy, control-plane scripts, or harness config; models must not grant themselves authority here."
+  - pattern: ^learning/candidates/archive/
+    risk: high
+    requires_human_review: true
+    reason: "Promoted learnings are injected into future agent prompts; promotion is a prompt-policy change."
   - pattern: ^(LICENSE|SECURITY\.md|CONTRIBUTING\.md|CODE_OF_CONDUCT\.md)$
     risk: medium
     requires_human_review: true

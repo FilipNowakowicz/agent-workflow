@@ -21,6 +21,15 @@
 # SAFETY: this never merges directly, never pushes to a base branch, and never
 # uses `gh pr merge --admin`. Merge authority is GitHub native auto-merge gated
 # by `merge-gate` (enabled only with --enable-auto-merge on an "auto" decision).
+#
+# TRUST: the merge gate and the review stage are run from the committed
+# `.agents` tree at the trusted base ref (git archive of origin/main, else
+# main; or $AGENT_GATE_TRUSTED_ROOT), never from the working tree, which may be
+# the PR under review and so could replace the gate that decides it.
+# --enable-auto-merge is refused when no trusted base can be established.
+# Not covered: this wrapper script itself. Run it from a checkout of the base
+# branch, not from the PR's tree (a PR that replaces the wrapper can replace
+# any check the wrapper does).
 set -euo pipefail
 
 AGENT_CLAUDE_CMD="${AGENT_CLAUDE_CMD:-claude}"
@@ -52,6 +61,8 @@ Options:
                        merge gate ("-" for stdin). Offline; never calls GitHub.
   --enable-auto-merge  On an "auto" gate decision, enable GitHub native auto-
                        merge (still gated by merge-gate). Default: dry-run.
+  --base-ref <ref>     Git ref whose committed `.agents` tree supplies the gate
+                       and review stage (default: origin/main, else main).
   --no-comment         Do not post the review summary as a PR comment.
   --out <path>         Alias for --evidence in review mode.
   --self-test          Run a deterministic, offline self-test and exit.
@@ -85,12 +96,47 @@ control_plane_prefix() {
   [[ -d "$(repo_root)/.agents" ]] && printf '.agents/\n' || printf '\n'
 }
 
+# TRUSTED_ROOT is the `.agents` directory the gate and review stage are run
+# from; TRUSTED is 1 when it came from reviewed code (an explicit
+# $AGENT_GATE_TRUSTED_ROOT, or the committed `.agents` tree at the base ref),
+# 0 when it fell back to the working tree.
+TRUSTED_ROOT=""
+TRUSTED=0
+BASE_REF=""
+
+resolve_trusted_root() {
+  local tmp="$1" repo ref
+  TRUSTED=0
+  if [[ -n ${AGENT_GATE_TRUSTED_ROOT:-} ]]; then
+    [[ -d $AGENT_GATE_TRUSTED_ROOT ]] ||
+      die "AGENT_GATE_TRUSTED_ROOT is not a directory: $AGENT_GATE_TRUSTED_ROOT"
+    TRUSTED_ROOT="$AGENT_GATE_TRUSTED_ROOT"
+    TRUSTED=1
+    return 0
+  fi
+  if repo=$(git -C "$(repo_root)" rev-parse --show-toplevel 2>/dev/null); then
+    for ref in ${BASE_REF:+"$BASE_REF"} origin/main main; do
+      git -C "$repo" rev-parse --verify --quiet "$ref^{commit}" >/dev/null 2>&1 || continue
+      mkdir -p "$tmp/trusted"
+      if git -C "$repo" archive "$ref" .agents 2>/dev/null | tar -x -C "$tmp/trusted" 2>/dev/null &&
+        [[ -x "$tmp/trusted/.agents/scripts/agent-merge-gate" ]]; then
+        TRUSTED_ROOT="$tmp/trusted/.agents"
+        TRUSTED=1
+        return 0
+      fi
+      break
+    done
+  fi
+  TRUSTED_ROOT="$(repo_root)/$(control_plane_prefix)"
+  TRUSTED_ROOT="${TRUSTED_ROOT%/}"
+}
+
 review_stage_bin() {
-  printf '%s/%sscripts/agent-review-stage\n' "$(repo_root)" "$(control_plane_prefix)"
+  printf '%s/scripts/agent-review-stage\n' "$TRUSTED_ROOT"
 }
 
 merge_gate_bin() {
-  printf '%s/%sscripts/agent-merge-gate\n' "$(repo_root)" "$(control_plane_prefix)"
+  printf '%s/scripts/agent-merge-gate\n' "$TRUSTED_ROOT"
 }
 
 review_state_dir() {
@@ -178,7 +224,12 @@ run_gate() {
   fi
   [[ $enable -eq 1 ]] && args+=(--enable)
   [[ $json -eq 1 ]] && args+=(--json)
-  "$gate" "${args[@]}"
+  # Pin the gate's own helper root to the same trusted tree it was loaded from.
+  if [[ $TRUSTED -eq 1 ]]; then
+    AGENT_GATE_TRUSTED_ROOT="$TRUSTED_ROOT" "$gate" "${args[@]}"
+  else
+    "$gate" "${args[@]}"
+  fi
 }
 
 run() {
@@ -211,6 +262,10 @@ run() {
       enable=1
       shift
       ;;
+    --base-ref)
+      BASE_REF="${2:?--base-ref needs a value}"
+      shift 2
+      ;;
     --no-comment)
       comment=0
       shift
@@ -226,6 +281,16 @@ run() {
   done
 
   command -v jq >/dev/null 2>&1 || die "jq not found"
+
+  local trust_tmp
+  trust_tmp=$(mktemp -d)
+  trap 'rm -rf "${trust_tmp:-}"' EXIT
+  resolve_trusted_root "$trust_tmp"
+  if [[ $TRUSTED -ne 1 ]]; then
+    [[ $enable -eq 1 ]] &&
+      die "refusing --enable-auto-merge: no trusted base for the merge gate (set AGENT_GATE_TRUSTED_ROOT, or run inside a repo whose origin/main or main commits .agents/). A PR must not run its own gate."
+    echo "agent-review-pr: WARNING: no trusted base ref; gate runs from the working tree (dry-run only)" >&2
+  fi
 
   if [[ $decision_only -eq 1 ]]; then
     [[ -n $evidence ]] || die "--decision-only requires --evidence"
@@ -318,6 +383,35 @@ EOF
   out=$("$script_path" --decision-only --evidence "$changes" --files-from "$low" --json)
   jq -e '.decision == "human"' <<<"$out" >/dev/null ||
     die "self-test: expected changes_requested decision-only to be human (got: $out)"
+
+  # H2 regression: a PR that replaces the working-tree gate must not decide
+  # itself. Consumer-shaped fixture: committed .agents is the trusted base,
+  # the working tree is tampered, and the wrapper must still say "human".
+  local root c
+  root="$(repo_root)"
+  c="$tmp/consumer"
+  mkdir -p "$c/.agents" "$c/scripts"
+  cp -r "$root/scripts" "$c/.agents/scripts"
+  cp "$root/governance.yaml" "$root/model-routing.yaml" "$root/capability-profiles.yaml" "$c/.agents/"
+  cp "$script_path" "$c/scripts/agent-review-pr.sh"
+  git -C "$c" init -q -b main
+  git -C "$c" config user.email test@example.invalid
+  git -C "$c" config user.name test
+  git -C "$c" add -A -f
+  git -C "$c" commit -qm base
+  git -C "$c" update-ref refs/remotes/origin/main HEAD
+  printf '#!/usr/bin/env bash\necho %s\n' "'{\"decision\":\"auto\"}'" >"$c/.agents/scripts/agent-merge-gate"
+  out=$(cd "$c" && ./scripts/agent-review-pr.sh --decision-only --no-comment --evidence "$approved" \
+    --files-from "$high" --json 2>/dev/null)
+  jq -e '.decision == "human"' <<<"$out" >/dev/null ||
+    die "self-test: a tampered working-tree gate decided its own PR (got: $out)"
+  # ... and --enable-auto-merge is refused outright when no trusted base exists.
+  git -C "$c" update-ref -d refs/remotes/origin/main
+  git -C "$c" branch -q -m main trunk
+  if (cd "$c" && ./scripts/agent-review-pr.sh --decision-only --no-comment --evidence "$approved" \
+    --pr 9001 --enable-auto-merge) >/dev/null 2>&1; then
+    die "self-test: --enable-auto-merge without a trusted base must be refused"
+  fi
 
   # --decision-only without --evidence is rejected.
   if "$script_path" --decision-only --files-from "$low" >/dev/null 2>&1; then
