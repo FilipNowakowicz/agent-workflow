@@ -108,6 +108,11 @@
 #                   repo's actual verification entrypoint, e.g. a
 #                   verification-loop skill name or a `make check`-style
 #                   command, for better-targeted validation.
+#   AGENT_LEARNING_ARCHIVE_DIR
+#                   operator-only override for the directory promoted learnings
+#                   are read from. By default they are read from the archive as
+#                   committed at origin/$BASE_BRANCH (never the working tree),
+#                   and none are injected if that cannot be resolved.
 #   AGENT_RUNNER_LABEL
 #                   human-readable label for this runner, used only in the
 #                   "Agent run started" issue comment (default: "self-hosted
@@ -667,19 +672,57 @@ learning_match_terms() {
     sort -u
 }
 
+# Print the directory holding the learning archive that is allowed to reach a
+# prompt: the archive as COMMITTED at the trusted base ref (origin/$BASE_BRANCH,
+# else $BASE_BRANCH), extracted under $1 -- never the live working tree, which
+# can hold an unmerged or leftover PR branch. $AGENT_LEARNING_ARCHIVE_DIR is an
+# operator-set override (used by the self-test). Returns 1 with no output when
+# no trusted source can be established, so callers inject nothing (fail closed).
+trusted_learning_archive() {
+  local out_dir="$1"
+  local rel=".agents/learning/candidates/archive" ref="" cand
+  if [[ -n ${AGENT_LEARNING_ARCHIVE_DIR:-} ]]; then
+    printf '%s\n' "$AGENT_LEARNING_ARCHIVE_DIR"
+    return 0
+  fi
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
+  for cand in "origin/$BASE_BRANCH" "$BASE_BRANCH"; do
+    if git rev-parse --verify --quiet "$cand^{commit}" >/dev/null 2>&1; then
+      ref=$cand
+      break
+    fi
+  done
+  [[ -n $ref ]] || return 1
+  git archive "$ref" "$rel" 2>/dev/null | tar -x -C "$out_dir" 2>/dev/null || return 1
+  [[ -d $out_dir/$rel ]] || return 1
+  printf '%s\n' "$out_dir/$rel"
+}
+
 # Select reviewed, promoted learnings that match this issue's path hints,
 # labels, or quoted routing terms. Raw open candidates are intentionally not
-# queried: only archived candidates with status: promoted can affect prompts.
+# queried: only archived candidates with status: promoted can affect prompts,
+# and only as committed at the trusted base ref (trusted_learning_archive).
+# Merging into archive/ is human-review routed (model-routing.yaml
+# learning-archive class), so that review is what authorises prompt text.
 select_promoted_learnings() {
   local issue_text="$1"
   local path_hints="${2:-}"
   local labels="${3:-}"
-  local archive_dir=".agents/learning/candidates/archive"
+  local archive_dir archive_tmp
 
   validate_non_negative_integer AGENT_PROMOTED_LEARNING_LIMIT "$AGENT_PROMOTED_LEARNING_LIMIT"
   validate_non_negative_integer AGENT_PROMOTED_LEARNING_CHAR_BUDGET "$AGENT_PROMOTED_LEARNING_CHAR_BUDGET"
   [[ $AGENT_PROMOTED_LEARNING_LIMIT -gt 0 && $AGENT_PROMOTED_LEARNING_CHAR_BUDGET -gt 0 ]] || return 0
-  [[ -d $archive_dir ]] || return 0
+
+  archive_tmp=$(mktemp -d)
+  if ! archive_dir=$(trusted_learning_archive "$archive_tmp"); then
+    rm -rf "$archive_tmp"
+    return 0
+  fi
+  [[ -d $archive_dir ]] || {
+    rm -rf "$archive_tmp"
+    return 0
+  }
 
   local terms_file candidates_file scored_file
   terms_file=$(mktemp)
@@ -688,7 +731,7 @@ select_promoted_learnings() {
 
   learning_match_terms "$issue_text" "$path_hints" "$labels" >"$terms_file"
   if [[ ! -s $terms_file ]]; then
-    rm -f "$terms_file" "$candidates_file" "$scored_file"
+    rm -rf "$terms_file" "$candidates_file" "$scored_file" "$archive_tmp"
     return 0
   fi
 
@@ -723,7 +766,7 @@ select_promoted_learnings() {
   done <"$candidates_file"
 
   if [[ ! -s $scored_file ]]; then
-    rm -f "$terms_file" "$candidates_file" "$scored_file"
+    rm -rf "$terms_file" "$candidates_file" "$scored_file" "$archive_tmp"
     return 0
   fi
   sort -r "$scored_file" |
@@ -744,7 +787,7 @@ select_promoted_learnings() {
         used += add
         count++
       }'
-  rm -f "$terms_file" "$candidates_file" "$scored_file"
+  rm -rf "$terms_file" "$candidates_file" "$scored_file" "$archive_tmp"
 }
 
 # Build the headless dispatch prompt for an issue. When $2 (newline-separated
@@ -1185,6 +1228,8 @@ targets: [scripts/agent-run-issue.sh]
 observation: this non-archived candidate must never be injected.
 EOF
   local backtick=$'\x60'
+  local old_archive_override="${AGENT_LEARNING_ARCHIVE_DIR:-}"
+  AGENT_LEARNING_ARCHIVE_DIR=".agents/learning/candidates/archive"
   out=$(select_promoted_learnings "Fix ${backtick}agent-run-issue${backtick} prompt handling" 'scripts/agent-run-issue.sh' 'agent:ready')
   [[ $out == *"promoted-runner"* ]] ||
     die "self-test: expected promoted archived learning to match (got: $out)"
@@ -1226,6 +1271,35 @@ EOF
     die "self-test: promoted learning selector exceeded char budget (${#out} > 120): $out"
   AGENT_PROMOTED_LEARNING_LIMIT="$old_learning_limit"
   AGENT_PROMOTED_LEARNING_CHAR_BUDGET="$old_learning_budget"
+
+  # Trusted-base read: only the archive as committed at the base ref reaches a
+  # prompt. An uncommitted/PR-branch entry in the working tree must not, and
+  # with no resolvable base the selector fails closed.
+  AGENT_LEARNING_ARCHIVE_DIR=""
+  (
+    set -e
+    tb=$(mktemp -d)
+    trap 'rm -rf "$tb"' EXIT
+    cd "$tb"
+    git init -q -b main
+    git config user.email test@example.invalid
+    git config user.name test
+    mkdir -p .agents/learning/candidates/archive
+    printf '%s\n' 'schema: learning-candidate/v1' 'id: reviewed' 'status: promoted' \
+      'triggers: [scripts/agent-run-issue.sh]' 'observation: REVIEWED-LEARNING' \
+      >.agents/learning/candidates/archive/reviewed.yml
+    git add -A && git commit -qm base
+    printf '%s\n' 'schema: learning-candidate/v1' 'id: evil' 'status: promoted' \
+      'triggers: [scripts/agent-run-issue.sh]' 'observation: UNREVIEWED-LEARNING' \
+      >.agents/learning/candidates/archive/evil.yml
+    got=$(select_promoted_learnings 'Fix runner prompt handling' 'scripts/agent-run-issue.sh' '')
+    [[ $got == *REVIEWED-LEARNING* ]] || { echo "self-test: base-committed learning was not selected (got: $got)" >&2; exit 1; }
+    [[ $got != *UNREVIEWED-LEARNING* ]] || { echo "self-test: working-tree-only learning reached the prompt (got: $got)" >&2; exit 1; }
+    rm -rf .git
+    [[ -z $(select_promoted_learnings 'Fix runner prompt handling' 'scripts/agent-run-issue.sh' '') ]] ||
+      { echo "self-test: selector must fail closed without a trusted base" >&2; exit 1; }
+  ) || die "self-test: trusted learning archive checks failed"
+  AGENT_LEARNING_ARCHIVE_DIR="$old_archive_override"
 
   prompt_with=$(build_issue_prompt 999 "" "- promoted-runner: keep validation output bounded")
   [[ $prompt_with == *"Known gotchas for these paths:"* ]] ||

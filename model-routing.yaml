@@ -16,6 +16,17 @@ path_classes:
     risk: low
     default_profile: doc-editor
     required_checks: ["git diff --check"]
+  # Archived candidates are the ONLY candidates whose text is spliced into
+  # future dispatch prompts (status: promoted; see select_promoted_learnings in
+  # orchestration/agent-run-issue.sh). Merging one is therefore a prompt-policy
+  # change and must be human-reviewed, never auto. Must precede
+  # learning-candidates (first match wins).
+  - id: learning-archive
+    description: "Archived/promoted learning candidates -- their text is injected into future agent prompts."
+    patterns: ["^learning/candidates/archive/"]
+    risk: medium
+    default_profile: agent-workflow-engineer
+    required_checks: ["bash learning/scripts/validate-candidates.sh learning", "human review"]
   # Must precede agent-workflow-scripts: its broad ^learning/ pattern would
   # otherwise classify run-produced candidate files as workflow-script
   # changes and drag every outcome's route into that class.
