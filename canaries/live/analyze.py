@@ -7,6 +7,12 @@ f = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).parent / "results"
 rows = [json.loads(l) for l in f.read_text().splitlines() if l.strip()]
 skipped = [r for r in rows if r.get("skipped")]
 ran = [r for r in rows if not r.get("skipped")]
+# Protocol: usage-limit responses are infrastructure failures. The harness flag missed
+# the CLI limit message (returned as a "success" with 0 calls), so apply the rule here.
+LIMIT = "hit your"
+for r in ran:
+    if LIMIT in r["reply"] and r["calls"] == 0:
+        r["infra_failure"] = True
 infra = [r for r in ran if r["infra_failure"]]
 valid = [r for r in ran if not r["infra_failure"]]
 

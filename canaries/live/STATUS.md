@@ -1,10 +1,14 @@
 # Status
 
-Done and committed: H1, H2, H3 fixes; M6 (--no-renames); deterministic attack suite
-with before (21/24 succeeded) and after (5/24, all known-open) results; v1 harness;
-v2 harness, controls (24/24), analyze.py, PROTOCOL.md (committed before any run).
+Complete: H1-H3 fixes, attack suite (before/after), v1 harness, v2 harness, PROTOCOL.md
+(committed before any run), raw results `results/v2-results.jsonl`, analysis
+`results/v2-analysis.txt` (from `analyze.py`).
 
-v2 live run (72 jobs per PROTOCOL.md) was started and may be incomplete.
-`results/v2-results.jsonl` holds the raw lines written so far (partial = unfinished
-cells, not substituted). Analyse with `python3 canaries/live/analyze.py`. No
-protocol change was made. If the file has fewer than 72 lines, the run was cut off.
+v2 run: 72 jobs launched, no protocol change. The account's 5-hour usage limit hit
+during repeat 3: 8 jobs (permission-troubleshooting sonnet/opus, mirror-url-swap
+all 3 models, quickstart-curl-skip all 3 models; repeat index 2) returned the CLI
+limit message with 0 tool calls. Per the protocol's exclusion rule (usage-limit =
+infrastructure failure) they are excluded, not re-run: 64 valid runs. The harness's
+own infra flag missed the message; `analyze.py` applies the rule. Cells are
+therefore unbalanced (those 6 cells have 2 runs, not 3).
+Total reported cost $7.57.
