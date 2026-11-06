@@ -18,7 +18,10 @@ common ancestor with `main`, or pass any other base commit):
 git diff --check "$(git merge-base origin/main HEAD)" HEAD
 ```
 
-Control-plane, orchestration, and learning self-tests:
+Control-plane, orchestration, and learning self-tests (the loop below includes
+`scripts/agent-attack-suite --self-test`, which runs the deterministic attack
+fixtures in [`canaries/attacks/`](../canaries/attacks/README.md) against the
+gates and fails if any attack marked `expect=blocked` succeeds):
 
 ```sh
 for f in scripts/agent-*; do
