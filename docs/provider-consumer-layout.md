@@ -100,4 +100,7 @@ copy and adapt these three files to its own `.agents/governance.yaml`,
 `.agents/model-routing.yaml`, and `.agents/capability-profiles.yaml`,
 rewriting the path-class patterns for its own repo layout (e.g. NixOS
 host/module trees) rather than reusing these provider-shaped patterns
-verbatim.
+verbatim. The patterns are anchored at the repo root, so an installed
+`.agents/` path does not match them: in particular, re-anchor
+`^learning/candidates/archive/` at `.agents/learning/candidates/archive/`,
+the directory promoted learnings are injected from.

@@ -285,7 +285,7 @@ run() {
   [[ -n $pr || -n $files_from ]] || die "one of --pr or --files-from is required (see --help)"
   [[ $enable -eq 1 && -z $pr ]] && die "--enable requires --pr"
 
-  local tmp
+  # Not `local`: the EXIT trap fires after this function returns.
   tmp=$(mktemp -d)
   trap 'rm -rf "${tmp:-}"' EXIT
 

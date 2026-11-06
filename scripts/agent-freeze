@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Manual/automatic freeze mechanism for autonomy, auto-merge, path classes,
-# and model profiles (PLAN.md "Issue 8 — Add freeze mechanism", "19.
-# Rollback and Quarantine").
+# and model profiles.
 #
 # A freeze is a marker file under AGENT_FREEZE_DIR (default: state/freezes/,
 # gitignored operator-local state — same convention as state/outcomes/ and
