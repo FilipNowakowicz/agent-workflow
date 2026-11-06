@@ -25,7 +25,7 @@ Before classification, this also checks AGENT_POLICY_EVAL_FREEZE (default:
 EVERY path is reported as requiring human review (its reason gets a freeze
 annotation appended) and the exit status is forced to 1, regardless of what
 governance.yaml would otherwise say -- this is how "dispatcher/policy
-evaluator reads freeze state" (PLAN.md Issue 8) surfaces here, and it also
+evaluator reads freeze state" surfaces here, and it also
 means scripts/agent-merge-gate (which gates purely on this command's exit
 status) automatically refuses auto-merge while frozen. Best-effort: a
 missing/non-executable freeze command is silently treated as "not frozen"

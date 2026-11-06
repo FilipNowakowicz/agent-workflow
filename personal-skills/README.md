@@ -17,3 +17,6 @@ It exists here purely for convenience (one repo, one clone) and is meant to
 be symlinked from `~/.claude/skills` for local use. If this directory grows
 enough to be worth sharing or versioning on its own, split it into its own
 repo rather than folding it into the exported `skills/` tree above.
+
+`synced/` is written by the local skill sync and is gitignored: it is
+machine-local output, not repo content.

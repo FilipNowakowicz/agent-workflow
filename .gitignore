@@ -9,6 +9,10 @@
 /state/freezes/*
 !/state/freezes/.gitkeep
 
+# Machine-local, never published: live skill sync output and private audits.
+/personal-skills/synced/
+/audits/
+
 # Nix
 /result
 /result-*

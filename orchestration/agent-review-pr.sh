@@ -282,7 +282,7 @@ run() {
 
   command -v jq >/dev/null 2>&1 || die "jq not found"
 
-  local trust_tmp
+  # Not `local`: the EXIT trap fires after this function returns.
   trust_tmp=$(mktemp -d)
   trap 'rm -rf "${trust_tmp:-}"' EXIT
   resolve_trusted_root "$trust_tmp"
@@ -405,6 +405,11 @@ EOF
     --files-from "$high" --json 2>/dev/null)
   jq -e '.decision == "human"' <<<"$out" >/dev/null ||
     die "self-test: a tampered working-tree gate decided its own PR (got: $out)"
+  # A run leaves no temp dirs behind (wrapper and gate clean up on exit).
+  mkdir "$tmp/leak"
+  (cd "$c" && TMPDIR="$tmp/leak" ./scripts/agent-review-pr.sh --decision-only --no-comment \
+    --evidence "$approved" --files-from "$high" --json) >/dev/null 2>&1
+  [[ -z $(ls -A "$tmp/leak") ]] || die "self-test: temp dirs leaked: $(ls -A "$tmp/leak")"
   # ... and --enable-auto-merge is refused outright when no trusted base exists.
   git -C "$c" update-ref -d refs/remotes/origin/main
   git -C "$c" branch -q -m main trunk

@@ -3,7 +3,7 @@
 
   # No inputs yet: this is a source-only provider flake. v2 will grow real
   # outputs here (the dispatcher/worker as NixOS modules, the policy evaluator
-  # as a package) per PLAN.md §22 "Extract agent-loop Repo".
+  # as a package); see docs/backlog.md.
   outputs =
     { self }:
     {
