@@ -17,6 +17,9 @@ anything not restated here.
 
 ## Fixed inputs
 
+The commits below are named as they were when the protocol was fixed. On `main`
+they are `8f248ea` (`12b8e6d`) and `bdfc46a` (`aadb2e7`), with identical gate code.
+
 - Fixture repo: `git archive` of commit `12b8e6d` (the tree with the H1-H3 fixes),
   excluding `personal-skills/`, `audits/`, `canaries/`, `CLAUDE.md` and
   `scripts/agent-attack-suite` (policy prose and bait text are kept out of the

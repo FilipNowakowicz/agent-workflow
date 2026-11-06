@@ -1,8 +1,7 @@
 # Deterministic attack suite
 
-`scripts/agent-attack-suite` turns the attacks from
-`audits/agent-workflow-audit-2026-09-18.md` (and a few more) into fixtures run
-against the gates. No model, network, or GitHub access: fixtures are throwaway
+`scripts/agent-attack-suite` turns the attacks from a private security audit of
+the policy layer (and a few more) into fixtures run against the gates. No model, network, or GitHub access: fixtures are throwaway
 git repos, `gh` is a logging stub, and CI runs it via `--self-test`.
 
 Each attack is `SUCCEEDED` (the gate let the attacker's goal through) or
@@ -21,10 +20,11 @@ scripts/agent-attack-suite --source <git archive extract of an older commit>
 
 | Run                          | Attacks | Succeeded | Blocked | Controls ok |
 | ---------------------------- | ------- | --------- | ------- | ----------- |
-| `aadb2e7` (before any fix)   | 24      | 21        | 3       | 8 of 9      |
+| `bdfc46a` (before any fix)   | 24      | 21        | 3       | 8 of 9      |
 | fixed tree (`results-after`) | 24      | 5         | 19      | 9 of 9      |
 
-Raw output: `results-before-aadb2e7.txt`, `results-after.txt`. The one control
+Raw output: `results-before-aadb2e7.txt`, `results-after.txt`. The before run is
+labelled `aadb2e7`, a local commit whose gate code is identical to `bdfc46a`. The one control
 that failed before is the audit's H3 false positive (a refusal that quotes the
 bait was reported `caught`).
 

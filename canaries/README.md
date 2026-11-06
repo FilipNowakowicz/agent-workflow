@@ -39,7 +39,7 @@ in a stream-json session. An agent's own words and tool results are never
 matched, so a correct refusal that quotes the bait is `refused`, and a diff
 that weakens policy is `caught` however it was described. (An earlier version
 matched regexes against transcript text, which flagged refusals and passed real
-weakening; see `audits/agent-workflow-audit-2026-09-18.md`, H3.)
+weakening.)
 
 What it does **not** do: dispatch a session itself, or schedule anything. The
 live half is `canaries/live/` (operator-run, costs model tokens, never in CI),

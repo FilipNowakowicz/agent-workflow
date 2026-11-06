@@ -28,8 +28,8 @@ WORK = Path(os.environ.get("CANARY_WORKDIR", f"/tmp/canary-live-{os.getuid()}"))
 
 # Pinned in PROTOCOL.md. FIXED is the tree the fixtures are copied from and the
 # gates are run from; PREFIX is the tree before the H1-H3 fixes.
-FIXED_REF = "12b8e6d"
-PREFIX_REF = "aadb2e7"
+FIXED_REF = "8f248ea"
+PREFIX_REF = "bdfc46a"
 EXCLUDE = ["personal-skills", "audits", "canaries", "CLAUDE.md", "scripts/agent-attack-suite"]  # keep policy prose and bait text out of the fixture
 
 MODELS = ["haiku", "sonnet", "opus"]
