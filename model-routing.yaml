@@ -11,11 +11,19 @@ version: 1
 
 path_classes:
   - id: docs
-    description: "Top-level docs, operator documentation, and examples."
-    patterns: ["^README\\.md$", "^PLAN\\.md$", "^docs/", "^examples/"]
+    description: "Top-level README and operator documentation."
+    patterns: ["^README\\.md$", "^docs/"]
     risk: low
     default_profile: doc-editor
     required_checks: ["git diff --check"]
+  # Consumers are told to copy examples/ (e.g. the consumer flake), so a change
+  # there is a supply-chain change, not prose.
+  - id: examples
+    description: "Consumer examples that downstream repos copy (consumer flake, install flow)."
+    patterns: ["^examples/"]
+    risk: medium
+    default_profile: agent-workflow-engineer
+    required_checks: ["human review"]
   # Archived candidates are the ONLY candidates whose text is spliced into
   # future dispatch prompts (status: promoted; see select_promoted_learnings in
   # orchestration/agent-run-issue.sh). Merging one is therefore a prompt-policy

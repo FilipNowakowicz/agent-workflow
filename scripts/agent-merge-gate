@@ -15,9 +15,9 @@
 #      .agents/scripts/agent-review-evidence-check, and has result == "approved".
 #
 # When eligible AND --enable is given, this enables GitHub *native* auto-merge
-# (`gh pr merge --auto --squash`): GitHub merges the PR only once the required
-# `merge-gate` status is green. CI stays the objective gate; the agent never
-# races it.
+# (`gh pr merge --auto --squash`): GitHub merges the PR only once the repo.s required
+# status checks are green. CI stays the objective gate; the agent never races
+# it.
 #
 # SAFETY INVARIANTS (do not weaken):
 #   - This NEVER uses `gh pr merge --admin` and NEVER pushes to a base branch.
@@ -81,7 +81,7 @@ Exit status:
   2  usage error or a required tool failed
 
 The merge decision is gated by CI: enabling native auto-merge only queues the
-PR; GitHub merges it when `merge-gate` passes. This command never bypasses
+PR; GitHub merges it when the required status checks pass. This command never bypasses
 branch protection.
 EOF
 }
@@ -344,7 +344,7 @@ run() {
   fi
 
   # Eligible and --enable: enable GitHub native, CI-gated auto-merge only.
-  # NEVER --admin; GitHub merges only when merge-gate passes.
+  # NEVER --admin; GitHub merges only when the required checks pass.
   command -v gh >/dev/null 2>&1 || die "gh not found (needed to enable auto-merge)"
   gh pr merge "$pr" --auto --squash ||
     die "failed to enable native auto-merge for PR #$pr (does the repo allow auto-merge + squash?)"
