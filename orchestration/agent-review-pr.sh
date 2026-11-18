@@ -179,6 +179,7 @@ Steps:
      evidence (what in the diff satisfies it), not a placeholder.
    - validation_commands[]: the checks the PR ran and their results.
    - residual_risk: the honest residual risk if this merged.
+   - head_sha: leave unchanged (the wrapper records the reviewed commit).
 5. Validate your file with:
    ${stage_bin} check ${evidence} --issue ${issue}
    Fix it until that check passes.
@@ -316,9 +317,18 @@ run() {
   stage="$(review_stage_bin)"
   [[ -x $stage ]] || die "agent-review-stage not found or not executable: $stage"
 
+  # Record the head commit being reviewed BEFORE the session starts. The
+  # wrapper, not the model, owns head_sha: it is re-stamped after the session
+  # so a model cannot point the approval at a different commit, and the gate
+  # refuses it if the PR head moves after this point.
+  local head_sha
+  head_sha=$(gh pr view "$pr" --json headRefOid --jq .headRefOid) ||
+    die "failed to read the head commit of PR #$pr"
+  [[ $head_sha =~ ^[0-9a-f]{40}$ ]] || die "unexpected head commit for PR #$pr: $head_sha"
+
   evidence="${evidence:-$(review_state_dir)/issue-${issue}-pr-${pr}.json}"
   mkdir -p "$(dirname "$evidence")"
-  "$stage" init --issue "$issue" --pr "$pr" --out "$evidence" >/dev/null ||
+  "$stage" init --issue "$issue" --pr "$pr" --head-sha "$head_sha" --out "$evidence" >/dev/null ||
     die "failed to scaffold reviewer evidence for issue #$issue / PR #$pr"
   echo "agent-review-pr: scaffolded evidence at $evidence" >&2
 
@@ -328,6 +338,11 @@ run() {
   [[ -n $AGENT_REVIEW_MODEL ]] && claude_args+=(--model "$AGENT_REVIEW_MODEL")
   echo "agent-review-pr: running reviewer session for PR #$pr ..." >&2
   "$AGENT_CLAUDE_CMD" "${claude_args[@]}" || die "reviewer session failed; inspect $evidence"
+
+  local stamped
+  stamped=$(jq --arg h "$head_sha" '.head_sha = $h' "$evidence") ||
+    die "reviewer evidence is not valid JSON; not gating PR #$pr"
+  printf '%s\n' "$stamped" >"$evidence"
 
   "$stage" check "$evidence" --issue "$issue" ||
     die "reviewer evidence failed validation; not gating PR #$pr"
@@ -353,6 +368,7 @@ self_test() {
   "schema": "agent-reviewer-evidence/v1",
   "issue": 284,
   "pr": 9001,
+  "head_sha": "0123456789abcdef0123456789abcdef01234567",
   "result": "approved",
   "acceptance_criteria": [
     {"criterion": "low-risk change", "evidence": "docs only"}

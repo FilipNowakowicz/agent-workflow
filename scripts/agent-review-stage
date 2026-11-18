@@ -15,7 +15,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: agent-review-stage init --issue <n> --pr <m> [--body-file <path>] [--out <path>]
+Usage: agent-review-stage init --issue <n> --pr <m> --head-sha <sha> [--body-file <path>] [--out <path>]
        agent-review-stage check <evidence.json> [--issue <n>] [--body-file <path>]
                            [--git-diff <ref> | --paths-from <path>]
        agent-review-stage --self-test
@@ -47,6 +47,9 @@ Options:
   --issue <n>        Issue number. For "check", fetches the body via
                      `gh issue view` unless --body-file is given.
   --pr <m>           PR number (init only).
+  --head-sha <sha>   init: full 40-hex SHA of the PR head being reviewed
+                     (recorded as head_sha; the merge gate requires it to
+                     match the PR's head at merge time).
   --body-file <path> Read the issue body from a file instead of GitHub.
   --out <path>       init: output path (default:
                      .agents/state/review/issue-<n>-pr-<m>.json).
@@ -157,7 +160,7 @@ read_changed_paths() {
 }
 
 cmd_init() {
-  local issue="" pr="" body_file="" out=""
+  local issue="" pr="" head_sha="" body_file="" out=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
     --issue)
@@ -166,6 +169,10 @@ cmd_init() {
       ;;
     --pr)
       pr="${2:?--pr needs a value}"
+      shift 2
+      ;;
+    --head-sha)
+      head_sha="${2:?--head-sha needs a value}"
       shift 2
       ;;
     --body-file)
@@ -184,6 +191,7 @@ cmd_init() {
 
   [[ $issue =~ ^[0-9]+$ ]] || die "init: --issue is required and must be a positive integer"
   [[ $pr =~ ^[0-9]+$ ]] || die "init: --pr is required and must be a positive integer"
+  [[ $head_sha =~ ^[0-9a-f]{40}$ ]] || die "init: --head-sha is required and must be a full 40-hex commit SHA"
   out="${out:-.agents/state/review/issue-${issue}-pr-${pr}.json}"
 
   local body criteria criteria_json
@@ -199,11 +207,13 @@ cmd_init() {
   jq -n \
     --argjson issue "$issue" \
     --argjson pr "$pr" \
+    --arg head_sha "$head_sha" \
     --argjson acceptance_criteria "$criteria_json" \
     '{
       schema: "agent-reviewer-evidence/v1",
       issue: $issue,
       pr: $pr,
+      head_sha: $head_sha,
       result: "blocked",
       acceptance_criteria: $acceptance_criteria,
       validation_commands: [
@@ -369,11 +379,11 @@ EOF
 
   # init: scaffolds one acceptance_criteria entry per bullet, result=blocked.
   local init_out
-  init_out=$(cd "$repo" && "$script_path" init --issue 901 --pr 9001 --body-file "$body")
+  init_out=$(cd "$repo" && "$script_path" init --issue 901 --pr 9001 --head-sha 0123456789abcdef0123456789abcdef01234567 --body-file "$body")
   [[ -f "$repo/$init_out" ]] || die "self-test: init did not write $init_out"
   jq -e '
     .schema == "agent-reviewer-evidence/v1"
-    and .issue == 901 and .pr == 9001
+    and .issue == 901 and .pr == 9001 and .head_sha == "0123456789abcdef0123456789abcdef01234567"
     and .result == "blocked"
     and (.acceptance_criteria | length == 2)
     and (.acceptance_criteria[0].criterion == "First criterion is covered.")

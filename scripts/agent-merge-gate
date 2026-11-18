@@ -34,7 +34,10 @@
 #     --enable is refused when no trusted base can be established.
 #   - Approved reviewer evidence is bound to the PR under test: when --pr is
 #     given, the evidence's `.pr` must match, so a stale or foreign approval
-#     cannot unlock a different PR.
+#     cannot unlock a different PR. It is also bound to a commit: whenever the
+#     PR's current head is known (--pr fetches it; --head-sha supplies it),
+#     the evidence's `head_sha` must equal it, so an approval does not survive
+#     a push to the PR branch. --enable always fetches the head.
 #   - An "auto-merge" (or "all") freeze forces "human". Freeze state is read
 #     with the trusted agent-freeze from the operator's own state directory
 #     ($AGENT_FREEZE_DIR, default <agent root>/state/freezes); if freeze state
@@ -62,7 +65,11 @@ Options:
   --evidence <path>   Reviewer-evidence JSON (schema agent-reviewer-evidence/v1).
                       Required for an "auto" decision; without it the decision
                       is always "human" (no approved review). When --pr is set,
-                      the evidence's `.pr` must equal it (binding).
+                      the evidence's `.pr` must equal it, and its `head_sha`
+                      must equal the PR's current head commit (binding).
+  --head-sha <sha>    The PR's current head commit, for offline (--files-from)
+                      runs; the evidence's `head_sha` must equal it. With --pr
+                      the head is fetched from GitHub instead.
   --base-ref <ref>    Git ref whose committed `.agents` tree is the TRUSTED
                       source for the routing/governance/evidence helpers
                       (default: the PR base, else origin/main, else main).
@@ -153,7 +160,7 @@ resolve_helper_root() {
 #   {decision, route, risk, requires_human_review, evidence_result, reasons[]}
 # decision is "auto" only when every gate agrees; otherwise "human".
 compute_decision() {
-  local paths_file="$1" evidence="$2" pr="$3" root="$4"
+  local paths_file="$1" evidence="$2" pr="$3" root="$4" head_sha="${5:-}"
   local route_json route risk policy_review evidence_result
 
   local route_bin="$root/scripts/agent-route"
@@ -193,6 +200,12 @@ compute_decision() {
       if [[ -n $pr ]] &&
         ! jq -e --argjson pr "$pr" '.pr == $pr' "$evidence" >/dev/null 2>&1; then
         reasons+=("reviewer evidence is for PR #$(jq -r '.pr // "?"' "$evidence") (not #$pr)")
+      fi
+      # Bind the approval to the reviewed commit: a push after the review
+      # invalidates it.
+      if [[ -n $head_sha ]] &&
+        ! jq -e --arg h "$head_sha" '.head_sha == $h' "$evidence" >/dev/null 2>&1; then
+        reasons+=("reviewer evidence is for commit $(jq -r '.head_sha // "?"' "$evidence" | cut -c1-12) (PR head is ${head_sha:0:12})")
       fi
     else
       evidence_result="invalid"
@@ -259,9 +272,14 @@ resolve_paths_file() {
 }
 
 run() {
-  local pr="" files_from="" evidence="" enable=0 json=0 base_ref=""
+  local pr="" files_from="" evidence="" enable=0 json=0 base_ref="" head_sha=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
+    --head-sha)
+      head_sha="${2:?--head-sha needs a value}"
+      [[ $head_sha =~ ^[0-9a-f]{40}$ ]] || die "--head-sha must be a full 40-hex commit SHA"
+      shift 2
+      ;;
     --pr)
       pr="${2:?--pr needs a value}"
       [[ $pr =~ ^[0-9]+$ ]] || die "--pr must be a positive integer"
@@ -317,9 +335,18 @@ run() {
     die "refusing --enable: could not establish a trusted base for the routing/governance helpers (set AGENT_GATE_TRUSTED_ROOT, or run inside the repo with a reachable base ref). A PR must not gate itself with its own copy of these scripts."
   fi
 
+  # The PR's current head commit, to bind the evidence to. Fetched from GitHub
+  # whenever the paths come from GitHub, and always before --enable.
+  if [[ -z $head_sha && -n $pr && ( -z $files_from || $enable -eq 1 ) ]]; then
+    command -v gh >/dev/null 2>&1 || die "gh not found (needed to fetch the PR head commit)"
+    head_sha=$(gh pr view "$pr" --json headRefOid --jq .headRefOid) ||
+      die "failed to fetch the head commit of PR #$pr via gh"
+    [[ $head_sha =~ ^[0-9a-f]{40}$ ]] || die "unexpected head commit for PR #$pr: $head_sha"
+  fi
+
   local paths_file decision_json decision
   paths_file=$(resolve_paths_file "$pr" "$files_from" "$tmp")
-  decision_json=$(compute_decision "$paths_file" "$evidence" "$pr" "$helper_root")
+  decision_json=$(compute_decision "$paths_file" "$evidence" "$pr" "$helper_root" "$head_sha")
   decision=$(jq -r '.decision' <<<"$decision_json")
 
   if [[ $json -eq 1 ]]; then
@@ -346,7 +373,9 @@ run() {
   # Eligible and --enable: enable GitHub native, CI-gated auto-merge only.
   # NEVER --admin; GitHub merges only when the required checks pass.
   command -v gh >/dev/null 2>&1 || die "gh not found (needed to enable auto-merge)"
-  gh pr merge "$pr" --auto --squash ||
+  # --match-head-commit: GitHub merges only the exact commit the evidence
+  # was bound to, even if the branch moves between this call and the merge.
+  gh pr merge "$pr" --auto --squash --match-head-commit "$head_sha" ||
     die "failed to enable native auto-merge for PR #$pr (does the repo allow auto-merge + squash?)"
   printf 'agent-merge-gate: native auto-merge enabled for PR #%s; GitHub will merge when merge-gate passes.\n' "$pr"
 }
@@ -376,6 +405,7 @@ self_test() {
   "schema": "agent-reviewer-evidence/v1",
   "issue": 284,
   "pr": 9001,
+  "head_sha": "0123456789abcdef0123456789abcdef01234567",
   "result": "approved",
   "acceptance_criteria": [
     {"criterion": "low-risk change", "evidence": "docs only"}
@@ -422,6 +452,16 @@ EOF
   out=$("$script_path" --files-from "$low" --evidence "$approved" --pr 4242 --json)
   jq -e '.decision == "human" and (.reasons | any(. | test("not #4242")))' \
     <<<"$out" >/dev/null || die "self-test: expected mismatched evidence .pr to be human (got: $out)"
+
+  # Approved evidence for a different commit than the PR head -> human.
+  out=$("$script_path" --files-from "$low" --evidence "$approved" --pr 9001 --head-sha fedcba9876543210fedcba9876543210fedcba98 --json)
+  jq -e '.decision == "human" and (.reasons | any(. | test("PR head is fedcba987654")))' \
+    <<<"$out" >/dev/null || die "self-test: expected evidence for a stale commit to be human (got: $out)"
+
+  # Approved evidence for the PR head commit -> auto.
+  out=$("$script_path" --files-from "$low" --evidence "$approved" --pr 9001 --head-sha 0123456789abcdef0123456789abcdef01234567 --json)
+  jq -e '.decision == "auto"' <<<"$out" >/dev/null ||
+    die "self-test: expected evidence for the PR head commit to be auto (got: $out)"
 
   # Approved evidence bound to the matching PR -> auto.
   out=$("$script_path" --files-from "$low" --evidence "$approved" --pr 9001 --json)

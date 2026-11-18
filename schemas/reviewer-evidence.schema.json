@@ -7,6 +7,7 @@
     "schema",
     "issue",
     "pr",
+    "head_sha",
     "result",
     "acceptance_criteria",
     "validation_commands",
@@ -24,6 +25,11 @@
     "pr": {
       "type": "integer",
       "minimum": 1
+    },
+    "head_sha": {
+      "description": "Full commit SHA of the PR head that was reviewed. Written by the review wrapper, not the model; agent-merge-gate requires it to equal the PR's current head.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
     },
     "result": {
       "enum": ["approved", "changes_requested", "blocked"]
