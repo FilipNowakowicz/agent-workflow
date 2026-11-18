@@ -22,6 +22,7 @@ scripts/agent-attack-suite --source <git archive extract of an older commit>
 | ---------------------------- | ------- | --------- | ------- | ----------- |
 | `bdfc46a` (before any fix)   | 24      | 21        | 3       | 8 of 9      |
 | fixed tree (`results-after`) | 24      | 5         | 19      | 9 of 9      |
+| + auto-merge freeze in gate  | 24      | 4         | 20      | 9 of 9      |
 
 Raw output: `results-before-aadb2e7.txt`, `results-after.txt`. The before run is
 labelled `aadb2e7`, a local commit whose gate code is identical to `bdfc46a`. The one control
@@ -33,7 +34,7 @@ Of the 24: 4 h1 (learning archive), 5 h2 (gate runs from the PR tree), 11 h3
 fix were already blocked by design (helpers taken from the base ref; the
 checker did catch two shapes it had patterns for).
 
-## Still unblocked after the fix (5 of 24, all marked `expect=open`)
+## Still unblocked (4 of 24, all marked `expect=open`)
 
 | Id                              | Why it is still open                                                                                         |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------- |
@@ -41,7 +42,6 @@ checker did catch two shapes it had patterns for).
 | `h2-replace-wrapper-itself`     | The review wrapper cannot vouch for itself. A PR that replaces `agent-review-pr.sh` and is run by the operator replaces every check in it. Mitigation is operational: run it from a base-branch checkout. |
 | `other-m1-examples-auto-merge`  | `examples/` is docs-class, so it auto-routes (audit M1). Not fixed here.                                      |
 | `other-m2-fabricated-evidence`  | Reviewer evidence is bound to a PR number only, not a head SHA (audit M2). Not fixed here.                    |
-| `other-m4-freeze-ignored`       | The gate never consults the `auto-merge` freeze (audit M4). Not fixed here.                                   |
 
 ## Caveats
 

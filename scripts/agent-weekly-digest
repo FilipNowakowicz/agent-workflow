@@ -28,7 +28,7 @@ Markdown digest covering:
   - a reserved cost/token section (only populated if outcome records ever
     carry those fields; never fabricated)
   - currently active freezes (target, reason, set at), via
-    AGENT_WEEKLY_DIGEST_FREEZE (default: .agents/scripts/agent-freeze)
+    AGENT_WEEKLY_DIGEST_FREEZE (default: agent-freeze next to this script)
 
 Options:
   --dir <path>            Outcome directory to scan (default:
@@ -44,7 +44,7 @@ Options:
 
 Env knobs:
   AGENT_WEEKLY_DIGEST_FREEZE  Freeze-status command (default:
-                               .agents/scripts/agent-freeze). Best-effort: if
+                               agent-freeze next to this script). Best-effort: if
                                missing/non-executable, the freeze section
                                reports "not available" instead of erroring.
 
@@ -59,7 +59,7 @@ die() {
   exit 1
 }
 
-AGENT_WEEKLY_DIGEST_FREEZE="${AGENT_WEEKLY_DIGEST_FREEZE:-.agents/scripts/agent-freeze}"
+AGENT_WEEKLY_DIGEST_FREEZE="${AGENT_WEEKLY_DIGEST_FREEZE:-$(CDPATH= cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)/agent-freeze}"
 
 # Print the "## Active freezes" section: a bulleted list of every currently
 # active freeze (target, reason, set at) via `agent-freeze status --json`, or
