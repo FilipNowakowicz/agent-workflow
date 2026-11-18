@@ -2,9 +2,11 @@
 # Manual/automatic freeze mechanism for autonomy, auto-merge, path classes,
 # and model profiles.
 #
-# A freeze is a marker file under AGENT_FREEZE_DIR (default: state/freezes/,
-# gitignored operator-local state — same convention as state/outcomes/ and
-# state/sessions/). Its mere presence means "frozen"; this script is the only
+# A freeze is a marker file under AGENT_FREEZE_DIR (default: state/freezes/
+# under the agent root -- `state/freezes` in the provider repo,
+# `.agents/state/freezes` in an installed consumer -- resolved from this
+# script's location, never from the caller's CWD; gitignored operator-local
+# state, same convention as state/outcomes/ and state/sessions/). Its mere presence means "frozen"; this script is the only
 # supported way to create, clear, or query one, so every consumer (the
 # dispatcher, the policy evaluator, the weekly digest, ...) agrees on the
 # same on-disk contract instead of each parsing freeze state independently.
@@ -15,13 +17,14 @@
 #
 # This script only manages freeze *state*; it does not itself enforce
 # anything. Enforcement is each consumer's job: `agent-dispatch` refuses to
-# start a batch while "all" is frozen, `agent-policy-eval` surfaces freeze
-# state in its decision output, `agent-weekly-digest` reports active
-# freezes. A frozen state is advisory data until a caller chooses to act on
-# it, same as governance.yaml's own non-enforcement stance.
+# start a batch while "all" is frozen, `agent-policy-eval` reports every path
+# as needing a human while "all" is frozen, `agent-merge-gate` refuses an
+# "auto" decision while "auto-merge" (or "all") is frozen, and
+# `agent-weekly-digest` reports active freezes. path-class and model freezes
+# are recorded and reported but not yet consulted by any gate.
 set -euo pipefail
 
-AGENT_FREEZE_DIR="${AGENT_FREEZE_DIR:-state/freezes}"
+AGENT_FREEZE_DIR="${AGENT_FREEZE_DIR:-$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/state/freezes}"
 
 usage() {
   cat <<'EOF'
@@ -36,9 +39,11 @@ Usage: agent-freeze all [--reason <text>]
 
 Freeze (or clear, or query) autonomy for the agent workflow loop. Freeze
 state is stored as marker files under AGENT_FREEZE_DIR (default:
-state/freezes/) and is advisory: this command only manages that state, it
-does not itself block dispatch or merge (see individual consumers:
-agent-dispatch, agent-policy-eval, agent-weekly-digest).
+state/freezes/ under the agent root, independent of the current directory).
+This command only manages that state; enforcement lives in its consumers:
+agent-dispatch and agent-policy-eval honor "all", agent-merge-gate honors
+"auto-merge" (and "all"), agent-weekly-digest reports every freeze.
+path-class and model freezes are recorded but not yet enforced.
 
 Targets:
   all               Freeze all autonomous activity (broadest; also satisfies
@@ -61,7 +66,7 @@ Commands:
 
 Env knobs:
   AGENT_FREEZE_DIR  Directory freeze markers are stored under (default:
-                     state/freezes).
+                     <agent root>/state/freezes).
 
 Options:
   --reason <text>   Reason recorded with a freeze (default: "no reason given").
@@ -128,8 +133,10 @@ do_freeze() {
   mkdir -p "$AGENT_FREEZE_DIR"
   local path
   path=$(marker_path "$basename")
-  printf '{"target":"%s","reason":"%s","at":"%s"}\n' \
-    "$label" "$reason" "$(utc_now)" >"$path"
+  # jq, not printf: a reason containing quotes or backslashes must still be
+  # valid JSON, or `status` would silently hide the freeze.
+  jq -nc --arg t "$label" --arg r "$reason" --arg a "$(utc_now)" \
+    '{target: $t, reason: $r, at: $a}' >"$path"
   printf 'agent-freeze: froze %s (%s)\n' "$label" "$path"
 }
 
@@ -283,6 +290,25 @@ self_test() {
   [[ $err == *'global "all" freeze'* ]] ||
     die "self-test: expected the check-via-all error to explain it was via the global freeze (got: $err)"
   "$script_path" clear all >/dev/null
+
+  # A reason containing quotes still round-trips through status.
+  "$script_path" auto-merge --reason 'revert of "#12"' >/dev/null ||
+    die "self-test: freeze with a quoted reason failed"
+  out=$("$script_path" status --json) || die "self-test: status --json with a quoted reason failed"
+  printf '%s' "$out" | jq -e '.[0].reason == "revert of \"#12\""' >/dev/null ||
+    die "self-test: quoted reason did not round-trip through status (got: $out)"
+  "$script_path" clear auto-merge >/dev/null
+
+  # The default freeze dir is anchored to the agent root (the script's parent
+  # directory), not the CWD: run a copy of this script from elsewhere and
+  # check where the marker lands.
+  mkdir -p "$tmp/root/scripts" "$tmp/elsewhere"
+  cp "$script_path" "$tmp/root/scripts/agent-freeze"
+  (cd "$tmp/elsewhere" && env -u AGENT_FREEZE_DIR "$tmp/root/scripts/agent-freeze" all >/dev/null) ||
+    die "self-test: freeze with the default freeze dir failed"
+  [[ -f "$tmp/root/state/freezes/all.json" ]] ||
+    die "self-test: default freeze dir must be <agent root>/state/freezes"
+  [[ ! -e "$tmp/elsewhere/state" ]] || die "self-test: default freeze dir must not be CWD-relative"
 
   # Unknown/missing targets are usage errors.
   if "$script_path" bogus-target >/dev/null 2>&1; then

@@ -56,7 +56,7 @@ Env knobs (mainly for testing):
   AGENT_DISPATCH_LIVENESS        Liveness gate command (default:
                                   .agents/scripts/agent-liveness-gate).
   AGENT_DISPATCH_FREEZE          Freeze-state command (default:
-                                  .agents/scripts/agent-freeze).
+                                  agent-freeze next to this script).
   AGENT_DISPATCH_RECORD_OUTCOME  Outcome recorder command (default:
                                   .agents/scripts/agent-record-outcome).
   AGENT_DISPATCH_COMMENTS        Post GitHub bounce comments for non-ready
@@ -86,7 +86,7 @@ utc_now() {
 AGENT_DISPATCH_RUNNER="${AGENT_DISPATCH_RUNNER:-scripts/agent-run-issue.sh}"
 AGENT_DISPATCH_READINESS="${AGENT_DISPATCH_READINESS:-.agents/scripts/agent-issue-readiness}"
 AGENT_DISPATCH_LIVENESS="${AGENT_DISPATCH_LIVENESS:-.agents/scripts/agent-liveness-gate}"
-AGENT_DISPATCH_FREEZE="${AGENT_DISPATCH_FREEZE:-.agents/scripts/agent-freeze}"
+AGENT_DISPATCH_FREEZE="${AGENT_DISPATCH_FREEZE:-$(CDPATH= cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)/agent-freeze}"
 AGENT_DISPATCH_RECORD_OUTCOME="${AGENT_DISPATCH_RECORD_OUTCOME:-.agents/scripts/agent-record-outcome}"
 AGENT_DISPATCH_COMMENTS="${AGENT_DISPATCH_COMMENTS:-1}"
 AGENT_OUTCOME_DIR="${AGENT_OUTCOME_DIR:-.agents/state/outcomes}"

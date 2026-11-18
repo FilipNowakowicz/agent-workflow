@@ -35,6 +35,10 @@
 #   - Approved reviewer evidence is bound to the PR under test: when --pr is
 #     given, the evidence's `.pr` must match, so a stale or foreign approval
 #     cannot unlock a different PR.
+#   - An "auto-merge" (or "all") freeze forces "human". Freeze state is read
+#     with the trusted agent-freeze from the operator's own state directory
+#     ($AGENT_FREEZE_DIR, default <agent root>/state/freezes); if freeze state
+#     cannot be read, the decision is "human" (fail closed).
 set -euo pipefail
 
 usage() {
@@ -198,6 +202,15 @@ compute_decision() {
     reasons+=("no reviewer-evidence file supplied")
   fi
 
+  # Gate 4: no auto-merge (or global) freeze. Fail closed if the freeze state
+  # cannot be read: an unreadable freeze is not evidence of no freeze.
+  local freeze_bin="$root/scripts/agent-freeze" freeze_err
+  if [[ ! -x $freeze_bin ]]; then
+    reasons+=("freeze state could not be checked (agent-freeze missing from trusted root)")
+  elif ! freeze_err=$("$freeze_bin" check auto-merge 2>&1); then
+    reasons+=("${freeze_err//$'\n'/ }")
+  fi
+
   local decision="human"
   [[ ${#reasons[@]} -eq 0 ]] && decision="auto"
 
@@ -296,6 +309,10 @@ run() {
   helper_root=${root_line%$'\t'*}
   trusted=${root_line##*$'\t'}
 
+  # Freeze markers are operator-local state, not code: read them from this
+  # checkout's state dir even when the helpers come from a trusted archive.
+  export AGENT_FREEZE_DIR="${AGENT_FREEZE_DIR:-$(agent_root)/state/freezes}"
+
   if [[ $enable -eq 1 && $trusted -ne 1 ]]; then
     die "refusing --enable: could not establish a trusted base for the routing/governance helpers (set AGENT_GATE_TRUSTED_ROOT, or run inside the repo with a reachable base ref). A PR must not gate itself with its own copy of these scripts."
   fi
@@ -344,6 +361,8 @@ self_test() {
   # routing/governance logic deterministically (not the committed base ref).
   export AGENT_GATE_TRUSTED_ROOT
   AGENT_GATE_TRUSTED_ROOT="$(agent_root)"
+  # Isolate from any real operator freeze.
+  export AGENT_FREEZE_DIR="$tmp/freezes"
 
   # Guard the core safety invariant: no actual `gh pr merge` command may use
   # `--admin` (anchored to command lines so doc/comment mentions are allowed).
@@ -408,6 +427,32 @@ EOF
   out=$("$script_path" --files-from "$low" --evidence "$approved" --pr 9001 --json)
   jq -e '.decision == "auto" and (.reasons | length == 0)' \
     <<<"$out" >/dev/null || die "self-test: expected matching evidence .pr to be auto (got: $out)"
+
+  # An auto-merge freeze forces human, even for low-risk + approved + bound.
+  "$(agent_root)/scripts/agent-freeze" auto-merge --reason "post-merge revert" >/dev/null
+  out=$("$script_path" --files-from "$low" --evidence "$approved" --pr 9001 --json)
+  jq -e '.decision == "human" and (.reasons | any(. | test("auto-merge is frozen")))' \
+    <<<"$out" >/dev/null || die "self-test: expected an auto-merge freeze to force human (got: $out)"
+  "$(agent_root)/scripts/agent-freeze" clear auto-merge >/dev/null
+
+  # A global "all" freeze also forces human.
+  "$(agent_root)/scripts/agent-freeze" all --reason "secret access" >/dev/null
+  out=$("$script_path" --files-from "$low" --evidence "$approved" --pr 9001 --json)
+  jq -e '.decision == "human"' <<<"$out" >/dev/null ||
+    die "self-test: expected an 'all' freeze to force human (got: $out)"
+  "$(agent_root)/scripts/agent-freeze" clear all >/dev/null
+
+  # A trusted root without agent-freeze fails closed.
+  local partial="$tmp/partial"
+  mkdir -p "$partial/scripts"
+  cp "$(agent_root)"/scripts/agent-route "$(agent_root)"/scripts/agent-policy-eval \
+    "$(agent_root)"/scripts/agent-review-evidence-check "$partial/scripts/"
+  cp "$(agent_root)"/governance.yaml "$(agent_root)"/model-routing.yaml \
+    "$(agent_root)"/capability-profiles.yaml "$partial/"
+  out=$(AGENT_GATE_TRUSTED_ROOT="$partial" AGENT_POLICY_EVAL_FREEZE=none \
+    "$script_path" --files-from "$low" --evidence "$approved" --pr 9001 --json)
+  jq -e '.decision == "human" and (.reasons | any(. | test("freeze state could not be checked")))' \
+    <<<"$out" >/dev/null || die "self-test: expected a missing agent-freeze to fail closed (got: $out)"
 
   # --enable without --pr is rejected.
   if "$script_path" --files-from "$low" --evidence "$approved" --enable >/dev/null 2>&1; then

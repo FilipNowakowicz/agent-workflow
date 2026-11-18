@@ -21,15 +21,17 @@ rule's risk level and whether it requires human review before any future
 autonomous merge path may proceed.
 
 Before classification, this also checks AGENT_POLICY_EVAL_FREEZE (default:
-.agents/scripts/agent-freeze) for a global "all" freeze. If one is active,
+the agent-freeze next to this script) for a global "all" freeze. If one is active,
 EVERY path is reported as requiring human review (its reason gets a freeze
 annotation appended) and the exit status is forced to 1, regardless of what
 governance.yaml would otherwise say -- this is how "dispatcher/policy
 evaluator reads freeze state" surfaces here, and it also
 means scripts/agent-merge-gate (which gates purely on this command's exit
-status) automatically refuses auto-merge while frozen. Best-effort: a
-missing/non-executable freeze command is silently treated as "not frozen"
-rather than an error, since this evaluator must keep working standalone.
+status) automatically refuses auto-merge while frozen. If the default
+freeze command is absent (a standalone copy of this script), the check is
+skipped. If AGENT_POLICY_EVAL_FREEZE is set explicitly but is not
+executable, this fails closed (exit 2) instead of reporting "not frozen";
+set it to "none" to turn the freeze check off on purpose.
 
 Changed-path source (pick at most one; default is stdin):
   --files-from <path>  Read newline-separated paths from <path> ("-" for
@@ -46,8 +48,8 @@ Options:
   -h, --help       Show this help.
 
 Env knobs:
-  AGENT_POLICY_EVAL_FREEZE  Freeze-state command (default:
-                             .agents/scripts/agent-freeze).
+  AGENT_POLICY_EVAL_FREEZE  Freeze-state command (default: agent-freeze next
+                             to this script; "none" disables the check).
 
 Output columns (text mode): path, risk, requires_human_review, reason.
 
@@ -71,7 +73,13 @@ default_policy_path() {
   printf '%s/governance.yaml\n' "$(CDPATH='' cd -- "$(script_dir)/.." && pwd)"
 }
 
-AGENT_POLICY_EVAL_FREEZE="${AGENT_POLICY_EVAL_FREEZE:-.agents/scripts/agent-freeze}"
+# An explicit setting must be usable (fail closed); the default is best effort.
+if [[ -n ${AGENT_POLICY_EVAL_FREEZE:-} ]]; then
+  AGENT_POLICY_EVAL_FREEZE_EXPLICIT=1
+else
+  AGENT_POLICY_EVAL_FREEZE_EXPLICIT=0
+  AGENT_POLICY_EVAL_FREEZE="$(script_dir)/agent-freeze"
+fi
 
 trim() {
   local s="$1"
@@ -234,6 +242,8 @@ self_test() {
   local tmp
   tmp=$(mktemp -d)
   trap 'rm -rf "$tmp"' RETURN
+  # Never let a real operator freeze leak into the self-test.
+  export AGENT_FREEZE_DIR="$tmp/freezes"
 
   local script_path
   script_path="$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
@@ -335,12 +345,22 @@ EOF
     '(length == 1) and .[0].risk == "high" and .[0].requires_human_review == true' >/dev/null ||
     die "self-test: unexpected --json output: $out"
 
-  # An ordinary, otherwise-clean path with no freeze command configured
-  # (the default .agents/scripts/agent-freeze does not exist in a bare
-  # checkout of this repo) passes normally: freeze checking degrades to a
-  # no-op rather than an error.
-  out=$(printf '%s\n' "${ordinary[0]}" | "$script_path" --files-from - 2>&1) && rc=0 || rc=$?
-  [[ $rc -eq 0 ]] || die "self-test: expected an ordinary path to pass without a freeze command (got $rc; output: $out)"
+  # An ordinary, otherwise-clean path with the freeze check disabled
+  # ("none") passes normally.
+  out=$(printf '%s\n' "${ordinary[0]}" | AGENT_POLICY_EVAL_FREEZE=none "$script_path" --files-from - 2>&1) && rc=0 || rc=$?
+  [[ $rc -eq 0 ]] || die "self-test: expected an ordinary path to pass with the freeze check disabled (got $rc; output: $out)"
+
+  # An explicitly configured but missing freeze command fails closed (exit 2)
+  # instead of silently reporting "not frozen".
+  out=$(printf '%s\n' "${ordinary[0]}" | AGENT_POLICY_EVAL_FREEZE=/nonexistent/agent-freeze "$script_path" --files-from - 2>&1) && rc=0 || rc=$?
+  [[ $rc -eq 2 ]] || die "self-test: expected an unusable explicit freeze command to exit 2 (got $rc; output: $out)"
+
+  # The default freeze command (the sibling agent-freeze) is found from any
+  # CWD and reads the freeze dir it is pointed at.
+  AGENT_FREEZE_DIR="$tmp/freezes" "$(dirname "$script_path")/agent-freeze" all --reason "self-test default" >/dev/null
+  out=$(cd / && printf '%s\n' "${ordinary[0]}" | env -u AGENT_POLICY_EVAL_FREEZE AGENT_FREEZE_DIR="$tmp/freezes" "$script_path" --files-from - 2>&1) && rc=0 || rc=$?
+  [[ $rc -eq 1 && $out == *"self-test default"* ]] ||
+    die "self-test: expected the default freeze command to see an 'all' freeze from any CWD (got $rc; output: $out)"
 
   # A global "all" freeze forces every path -- even an otherwise-clean one --
   # to require human review, with the freeze reason surfaced in its row, and
@@ -433,7 +453,11 @@ main() {
 
   # A global "all" freeze forces every path to require human review,
   # regardless of governance.yaml, and is surfaced in each row's reason.
-  if [[ -x $AGENT_POLICY_EVAL_FREEZE ]]; then
+  if [[ $AGENT_POLICY_EVAL_FREEZE != none && ! -x $AGENT_POLICY_EVAL_FREEZE &&
+    $AGENT_POLICY_EVAL_FREEZE_EXPLICIT == 1 ]]; then
+    die "AGENT_POLICY_EVAL_FREEZE is set but not executable: $AGENT_POLICY_EVAL_FREEZE (set it to \"none\" to disable the freeze check)"
+  fi
+  if [[ $AGENT_POLICY_EVAL_FREEZE != none && -x $AGENT_POLICY_EVAL_FREEZE ]]; then
     local freeze_err
     if ! freeze_err=$("$AGENT_POLICY_EVAL_FREEZE" check all 2>&1); then
       freeze_err="${freeze_err//$'\n'/ }"
