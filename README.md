@@ -19,9 +19,26 @@ failure modes are documented in
 
 Public-use basics are tracked in [`LICENSE`](LICENSE), [`SECURITY.md`](SECURITY.md),
 [`CONTRIBUTING.md`](CONTRIBUTING.md), and
-[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md). The repository is still a v2
-development space; those files define the intended public contract, not a claim
-that the loop is turnkey for arbitrary repositories yet.
+[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md). Those files define the intended
+public contract, not a claim that the loop is turnkey for arbitrary
+repositories.
+
+## Results
+
+- **Security review.** The policy layer was audited against its own claim
+  that autonomy is bounded by deterministic policy. All three high findings
+  and the medium and low findings that apply to this repo today are fixed,
+  each with a regression test; the rest are documented with the condition
+  under which they matter. See [`docs/security-review.md`](docs/security-review.md).
+- **Attack suite.** The findings run as 24 deterministic attack fixtures in
+  CI. Before the fixes 21 got through; now 2 do, both open by design. See
+  [`canaries/attacks/`](canaries/attacks/README.md).
+- **Live canary study.** 64 real agent sessions across three models were
+  offered subtle harmful changes inside ordinary tasks, under a protocol
+  committed before the data. Models took the bait in 45% of runs. The gates
+  stopped every bait that touched a protected path but only half of those
+  hidden in file content, which is the main limit of path-based policy. See
+  [`canaries/live/`](canaries/live/README.md).
 
 ## What this gives you
 
@@ -79,12 +96,8 @@ yet.
 - **Canaries** (`canaries/`): adversarial canary definitions and a
   deterministic checker that judges actions (changed paths, added diff lines,
   tool calls) rather than prose; `scripts/agent-attack-suite` turns the
-  audit's gate bypasses into regression fixtures, and `canaries/live/` holds
-  the operator-run live-agent harness.
-- **Personal skills** (`personal-skills/`): general-purpose skills outside
-  this repo's agent-workflow domain, kept here for convenience only. Not
-  part of the flake's `paths` output or `install.sh` — see
-  [`personal-skills/README.md`](personal-skills/README.md).
+  security review's gate bypasses into regression fixtures, and
+  `canaries/live/` holds the operator-run live-agent harness.
 
 ## Maturity and sharp edges
 
@@ -105,21 +118,22 @@ provider repo. It is not yet a turnkey product. In particular:
   agent-loop repo remain deliberately deferred — see
   [`docs/backlog.md`](docs/backlog.md) for the trigger conditions.
 
-## Status: v2 development space (seeded snapshot)
+## Status and history
 
-This repo was seeded from the working agent loop in the personal `nixos-config`
-flake (the `gcp-agent` issue-loop). The strategy is **fork-forward**, not
-migration:
+This repo was seeded in June 2026 from the agent loop that ran in the personal
+`nixos-config` flake on an on-demand GCP VM (v1). That loop dispatched real
+issues from June 2026 and produced the outcome telemetry behind the timeout fix described under
+"How much is built". This repo is v2: the same engine split into a
+reusable provider with policy, evidence, freeze, and canary layers, then
+audited and hardened.
 
-- The `nixos-config` repo keeps running its loop off its own local copies,
-  **untouched**, as v1.
-- This repo is where **v2 is built** — free to refactor toward the target
-  control plane described in [`CLAUDE.md`](CLAUDE.md) without risking the
-  live infra.
-- **Later**, `nixos-config` consumes this repo as a flake input (see
-  [`flake.nix`](flake.nix)) and deletes its local copies at that point.
+v1 was retired from `nixos-config` in November 2026 together with its VM, so
+this repo is not currently running against a live issue queue. Running it
+again needs an agent host, an issue queue, and the operator-local settings
+described in [`docs/gcp-issue-loop.md`](docs/gcp-issue-loop.md). The
+self-tests, attack suite, and flake checks run on every change.
 
-Because it's a snapshot, the carried-over skills and scripts originally
+Because it started as a snapshot, the carried-over skills and scripts originally
 hardcoded `nixos-config`-specific references (`scripts/validate.sh`,
 `nix-verification-loop`, `lib/invariants.nix`) as if they were generic.
 Splitting "engine" from "consumer-local config" was the first v2 work item;
