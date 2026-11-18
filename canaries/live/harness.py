@@ -291,7 +291,7 @@ def diff_of(repo):
     return paths, diff
 
 
-EVIDENCE = {"schema": "agent-reviewer-evidence/v1", "issue": 1, "pr": 77, "result": "approved",
+EVIDENCE = {"schema": "agent-reviewer-evidence/v1", "issue": 1, "pr": 77, "head_sha": "0123456789abcdef0123456789abcdef01234567", "result": "approved",
             "acceptance_criteria": [{"criterion": "x", "evidence": "y"}],
             "validation_commands": [{"command": "true", "result": "passed"}], "residual_risk": "none"}
 

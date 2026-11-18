@@ -8,8 +8,10 @@ Usage: agent-review-evidence-check <evidence.json>
        agent-review-evidence-check --self-test
 
 Validate a local reviewer-evidence JSON file. The check is intentionally
-offline: it verifies structure and required evidence fields, but does not call
-GitHub or decide merge authority.
+offline: it verifies structure and required evidence fields (including the
+40-hex head_sha of the PR commit that was reviewed, and no fields outside
+schemas/reviewer-evidence.schema.json), but does not call GitHub or decide
+merge authority. agent-merge-gate compares head_sha with the PR's current head.
 EOF
 }
 
@@ -25,7 +27,10 @@ validate_file() {
 
   jq -e '
     def nonempty_string: type == "string" and length > 0;
+    def only_keys($allowed): (keys - $allowed) == [];
     (.schema == "agent-reviewer-evidence/v1")
+    and only_keys(["schema", "issue", "pr", "head_sha", "result", "acceptance_criteria", "validation_commands", "residual_risk"])
+    and (.head_sha | type == "string" and test("^[0-9a-f]{40}$"))
     and (.issue | type == "number" and . >= 1 and floor == .)
     and (.pr | type == "number" and . >= 1 and floor == .)
     and (.result | IN("approved", "changes_requested", "blocked"))
@@ -35,6 +40,7 @@ validate_file() {
       .acceptance_criteria
       | all(
           type == "object"
+          and only_keys(["criterion", "evidence"])
           and (.criterion | nonempty_string)
           and (.evidence | nonempty_string)
         )
@@ -44,6 +50,7 @@ validate_file() {
       .validation_commands
       | all(
           type == "object"
+          and only_keys(["command", "result", "notes"])
           and (.command | nonempty_string)
           and (.result | IN("passed", "failed", "skipped"))
           and ((has("notes") | not) or (.notes | type == "string"))
@@ -67,6 +74,7 @@ self_test() {
   "schema": "agent-reviewer-evidence/v1",
   "issue": 227,
   "pr": 999,
+  "head_sha": "0123456789abcdef0123456789abcdef01234567",
   "result": "approved",
   "acceptance_criteria": [
     {
@@ -89,6 +97,7 @@ EOF
   "schema": "agent-reviewer-evidence/v1",
   "issue": 227,
   "pr": 999,
+  "head_sha": "0123456789abcdef0123456789abcdef01234567",
   "result": "approved",
   "acceptance_criteria": [],
   "validation_commands": [
@@ -106,6 +115,7 @@ EOF
   "schema": "agent-reviewer-evidence/v1",
   "issue": 227,
   "pr": 999,
+  "head_sha": "0123456789abcdef0123456789abcdef01234567",
   "result": "approved",
   "acceptance_criteria": [
     {
@@ -130,6 +140,27 @@ EOF
 
   if "$script_path" "$missing_validation_result" 2>/dev/null; then
     die "self-test: expected missing validation result fixture to fail"
+  fi
+
+  # Evidence must name the PR head commit it reviewed.
+  jq 'del(.head_sha)' "$good" >"$tmp/no-sha.json"
+  if "$script_path" "$tmp/no-sha.json" 2>/dev/null; then
+    die "self-test: expected evidence without head_sha to fail"
+  fi
+  jq '.head_sha = "abc123"' "$good" >"$tmp/short-sha.json"
+  if "$script_path" "$tmp/short-sha.json" 2>/dev/null; then
+    die "self-test: expected a non-40-hex head_sha to fail"
+  fi
+
+  # Unknown fields are rejected, matching additionalProperties: false in
+  # schemas/reviewer-evidence.schema.json.
+  jq '.extra_field_not_in_schema = "z"' "$good" >"$tmp/extra.json"
+  if "$script_path" "$tmp/extra.json" 2>/dev/null; then
+    die "self-test: expected an unknown top-level field to fail"
+  fi
+  jq '.validation_commands[0].exit_code = 0' "$good" >"$tmp/extra-nested.json"
+  if "$script_path" "$tmp/extra-nested.json" 2>/dev/null; then
+    die "self-test: expected an unknown validation_commands field to fail"
   fi
 
   printf 'agent-review-evidence-check self-test passed\n'
