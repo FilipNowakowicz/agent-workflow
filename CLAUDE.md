@@ -45,9 +45,11 @@ Trust hierarchy, highest to lowest:
 repeated track record of clean, reviewed outcomes in a specific path class,
 and shrink immediately on failure (a post-merge revert freezes that path
 class; a protected-path or secret-access violation freezes all autonomy).
-Today this policy layer (`governance.yaml`, `agent-policy-eval`) is
-**advisory** — nothing yet blocks a merge on its verdict — so don't describe
-it as enforcing in docs or commit messages until that changes.
+This policy layer (`governance.yaml`, `agent-policy-eval`) is **advisory for
+blocking** (nothing in CI or branch protection reads it) but **authoritative
+for granting**: `agent-merge-gate` and `agent-review-stage` refuse an
+autonomous merge when it says a path needs a human. Describe it that way in
+docs and commit messages, not as a merge blocker.
 
 **Token-conscious by default.** Don't spend tokens where the output can't
 change the decision:

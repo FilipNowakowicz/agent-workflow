@@ -269,6 +269,21 @@ self_test() {
     "hosts/main/secrets/host.age"
     "LICENSE"
     "SECURITY.md"
+    "schemas/reviewer-evidence.schema.json"
+    "canaries/protected-path-touch.yml"
+    "learning/scripts/validate-candidates.sh"
+    "repo-map/scripts/query.sh"
+    "skills/issue-tdd/SKILL.md"
+    "flake.nix"
+    "flake.lock"
+    "CLAUDE.md"
+    ".github/actions/setup/action.yml"
+    ".github/CODEOWNERS"
+    ".githooks/commit-msg"
+    "examples/consumer-flake/flake.nix"
+    "learning/candidates/archive/2026-01-01-x.yml"
+    "some/new/unlisted-file.sh"
+    "docs/nested/page.md"
   )
   out=$(printf '%s\n' "${protected[@]}" | "$script_path" --files-from - 2>&1) && rc=0 || rc=$?
   [[ $rc -eq 1 ]] || die "self-test: expected protected paths to exit 1 (got $rc; output: $out)"
@@ -280,11 +295,10 @@ self_test() {
       die "self-test: expected '$p' to require human review (got: $out)"
   done
 
-  # Ordinary docs and non-policy agent docs pass with low risk and exit 0.
+  # Only the explicit low-risk allowlist passes with low risk and exit 0.
   local ordinary=(
     "docs/endgame-analysis.md"
     "README.md"
-    "skills/issue-tdd/SKILL.md"
     "learning/candidates/example.yml"
   )
   out=$(printf '%s\n' "${ordinary[@]}" | "$script_path" --files-from - 2>&1) && rc=0 || rc=$?
@@ -293,6 +307,19 @@ self_test() {
     awk -F'\t' -v p="$p" '$1 == p && $2 == "low" && $3 == "false" { f = 1 } END { exit f ? 0 : 1 }' <<<"$out" ||
       die "self-test: expected '$p' to be low risk and not require review (got: $out)"
   done
+
+  # Deny by default, checked against the real tree: every tracked file in this
+  # repo outside the low-risk allowlist (flat docs/*.md, README.md, top-level
+  # learning candidates) must require human review. Catches a future rule that
+  # quietly marks a real control-plane path low risk.
+  local repo_root tracked unexpected
+  repo_root="$(CDPATH='' cd -- "$(script_dir)/.." && pwd)"
+  if tracked=$(git -C "$repo_root" ls-files 2>/dev/null) && [[ -n $tracked ]]; then
+    out=$(AGENT_POLICY_EVAL_FREEZE=none "$script_path" --files-from - <<<"$tracked" 2>&1) || true
+    unexpected=$(awk -F'\t' 'NR > 1 && $3 == "false" && $1 !~ /^(docs\/[^\/]+\.md|README\.md|learning\/candidates\/[^\/]+\.yml)$/ { print $1 }' <<<"$out")
+    [[ -z $unexpected ]] ||
+      die "self-test: tracked paths outside the low-risk allowlist do not require review: $unexpected"
+  fi
 
   # A custom policy file is honored, including its default fallback.
   local custom_policy="$tmp/governance.yaml"

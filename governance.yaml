@@ -1,7 +1,7 @@
-# Agent governance policy (advisory, opt-in).
+# Agent governance policy.
 #
 # Classifies changed repository paths by risk and whether they require human
-# review before any future autonomous merge path may proceed. Evaluated by
+# review before an autonomous merge may proceed. Evaluated by
 # scripts/agent-policy-eval (see that script's --self-test for the
 # deterministic self-check).
 #
@@ -10,17 +10,23 @@
 # model-routing.yaml. The first matching rule wins; a path that matches no
 # rule falls back to `default`.
 #
-# This file does not itself enforce anything: nothing currently blocks a
-# merge based on its verdicts, and branch protection is unaffected. It exists
-# so future workflow code has a single, versioned, deterministic place to ask
-# "does this changed path need a human?" Models must not edit this file (or
-# the evaluator below) to grant themselves additional autonomy.
+# Deny by default: any path not explicitly allowlisted below requires human
+# review, the same stance model-routing.yaml takes for unclassified paths.
+# Only plain prose (docs/, README.md) and run-produced learning candidates
+# are low risk. Protected-path rules come first so their reasons are the
+# ones reported.
+#
+# How this is used: advisory for *blocking* (nothing in CI or branch
+# protection reads it), authoritative for *granting* (agent-merge-gate and
+# agent-review-stage refuse an autonomous merge when any path here requires
+# review). Models must not edit this file (or the evaluator) to grant
+# themselves additional autonomy.
 version: 1
 
 default:
-  risk: low
-  requires_human_review: false
-  reason: "No protected-path rule matched."
+  risk: medium
+  requires_human_review: true
+  reason: "Not on the low-risk allowlist (deny by default)."
 
 rules:
   - pattern: (^|/)secrets/
@@ -35,14 +41,18 @@ rules:
     risk: high
     requires_human_review: true
     reason: "Age key material."
-  - pattern: ^\.github/workflows/
+  - pattern: ^\.github/
     risk: high
     requires_human_review: true
-    reason: "CI/CD workflow definitions control automation trust boundaries."
-  - pattern: ^(governance\.yaml|model-routing\.yaml|capability-profiles\.yaml|scripts/agent-[^/]+|orchestration/agent-.*\.sh|install\.sh|check-flake-outputs\.sh|\.claude/.+|\.codex/.+)$
+    reason: "CI/CD workflows, actions, and repo ownership control automation trust boundaries."
+  - pattern: ^(governance\.yaml|model-routing\.yaml|capability-profiles\.yaml|scripts/agent-[^/]+|orchestration/agent-.*\.sh|install\.sh|check-flake-outputs\.sh|CLAUDE\.md|\.claude/.+|\.codex/.+|\.githooks/.+)$
     risk: high
     requires_human_review: true
-    reason: "Agent workflow policy, control-plane scripts, or harness config; models must not grant themselves authority here."
+    reason: "Agent workflow policy, control-plane scripts, instructions, or harness config; models must not grant themselves authority here."
+  - pattern: ^(schemas/|canaries/|learning/scripts/|repo-map/scripts/|skills/|flake\.(nix|lock)$|examples/)
+    risk: high
+    requires_human_review: true
+    reason: "Evidence contracts, canaries, agent skills, or the consumer supply chain; these decide what later checks trust."
   - pattern: ^learning/candidates/archive/
     risk: high
     requires_human_review: true
@@ -51,3 +61,12 @@ rules:
     risk: medium
     requires_human_review: true
     reason: "Public legal/security-policy commitment; needs a human sign-off before merge."
+  # Low-risk allowlist. Everything else falls through to the deny default.
+  - pattern: ^(docs/[^/]+\.md|README\.md)$
+    risk: low
+    requires_human_review: false
+    reason: "Prose documentation."
+  - pattern: ^learning/candidates/[^/]+\.yml$
+    risk: low
+    requires_human_review: false
+    reason: "Captured learning candidate; inert until a human-reviewed PR promotes it into archive/."
