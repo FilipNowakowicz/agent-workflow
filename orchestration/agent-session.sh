@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Start the on-demand gcp-agent VM and wait until it is reachable over Tailscale.
+# Start the on-demand agent VM and wait until it is reachable over Tailscale.
 #
-# gcp-agent is normally powered off and powers itself back off when idle (see
-# the agent-idle-shutdown timer in hosts/gcp-agent/default.nix). This helper is
-# the "start" side of that lifecycle — the agent analog of validate.sh's
-# build-offload-focused ensure_builder, kept separate because its job is to open
-# an interactive/orchestration session rather than to offload a build.
+# The agent host is expected to be normally powered off and to power itself back
+# off when idle (an idle-shutdown timer on the host). This helper is the "start"
+# side of that lifecycle: it opens an interactive or orchestration session on
+# the host rather than offloading a build.
 #
 # Usage:
 #   scripts/agent-session.sh                 # start, wait, open interactive SSH
@@ -25,10 +24,12 @@
 #                                            # are collected even when the
 #                                            # remote issue run exits non-zero)
 #
-# Env knobs (defaults match lib/hosts.nix + infra/variables.tf):
+# Env knobs (defaults are from the original dogfood deployment; override them
+# for your own host):
 #   AGENT_NAME (gcp-agent)  AGENT_ZONE (europe-west2-a)
-#   AGENT_FQDN (gcp-agent.tail90fc7a.ts.net)  SSH_USER (user)
-#   REMOTE_AGENT_REPO_DIR (nix)  relative or absolute repo path on gcp-agent
+#   AGENT_FQDN ($AGENT_NAME, i.e. the Tailscale MagicDNS short name)
+#   SSH_USER (user)
+#   REMOTE_AGENT_REPO_DIR (nix)  relative or absolute repo path on the host
 #
 # Prerequisite: gcloud authenticated with the agent's project active
 #   (gcloud config set project <id>), and tailnet access as tag:workstation.
@@ -38,7 +39,7 @@ set -euo pipefail
 
 AGENT_NAME="${AGENT_NAME:-gcp-agent}"
 AGENT_ZONE="${AGENT_ZONE:-europe-west2-a}"
-AGENT_FQDN="${AGENT_FQDN:-gcp-agent.tail90fc7a.ts.net}"
+AGENT_FQDN="${AGENT_FQDN:-$AGENT_NAME}"
 SSH_USER="${SSH_USER:-user}"
 REMOTE_AGENT_REPO_DIR="${REMOTE_AGENT_REPO_DIR:-nix}"
 
