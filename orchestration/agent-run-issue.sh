@@ -17,8 +17,7 @@
 #   scripts/agent-run-issue.sh --label architecture-review
 #
 # `agent:ready` is the maintainer-owned default queue label for automated
-# dispatch (see ".agents/README.md" "Dispatch Eligibility" and
-# ".agents/scripts/agent-dispatchable-issues"). --label takes any label
+# dispatch (see docs/gcp-issue-loop.md and scripts/agent-dispatchable-issues). --label takes any label
 # verbatim, so other queues (e.g. architecture-review) remain usable for
 # attended runs.
 #
@@ -1423,7 +1422,7 @@ if [[ $self_test == 1 ]]; then
   exit 0
 fi
 
-command -v "$AGENT_CLAUDE_CMD" >/dev/null 2>&1 || die "$AGENT_CLAUDE_CMD CLI not found (Home Manager agent role)"
+command -v "$AGENT_CLAUDE_CMD" >/dev/null 2>&1 || die "$AGENT_CLAUDE_CMD CLI not found on the agent host"
 command -v gh >/dev/null 2>&1 || die "gh not found"
 command -v git >/dev/null 2>&1 || die "git not found"
 command -v jq >/dev/null 2>&1 || die "jq not found"
